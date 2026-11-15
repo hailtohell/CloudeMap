@@ -1,0 +1,118 @@
+# CloudeMap
+
+> **AI disclaimer:** CloudeMap's code, its icon and this README were written with an AI
+> assistant (Claude, by Anthropic), directed, tested and reviewed in game by a human. Expect the
+> occasional rough edge; use it at your own risk.
+
+A lightweight, seamless world map for WoW Forever (Interface 16001). One window, every zone of a
+continent stitched together, zoomable from the whole world down to street level.
+
+CloudeMap started as a personal addon, made to fit the way I like to play. It has grown into
+something I'm happy to share with the WoW community, so here it is. It's still mainly my own
+project: features and fixes follow what I need in game, but feedback is welcome.
+
+**Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
+written from scratch.
+
+Version 0.19.1 · SavedVariables: CloudeMapDB
+
+---
+
+## Features
+
+### Map
+- Whole continents as one seamless map; pan and zoom across zone borders.
+- Two modes: **parchment** (zone art) and **satellite** (minimap terrain).
+- The zone under the pointer and your own zone are shown in full detail.
+- Cities take priority over the surrounding zone.
+- Unexplored areas shown dimmed.
+
+### Window
+- Move, resize, set opacity; position and size are remembered.
+- Frame fades out when the pointer leaves, like Carbonite; map and text stay.
+- Title bar: your zone, its level range and your position.
+- Pointer readout: zone, level range, position and distance from you in yards.
+- Level ranges coloured by faction: green yours, orange contested, red enemy.
+- Zoom level shown while zooming: x1 is the whole world, the wheel steps through round figures (x1.5, x2, x3 … x24, x32 …).
+- Toolbar: parchment/satellite, Follow, Options, plus Dungeon Journal and BG when available.
+- Minimap button to show/hide the map.
+
+### You and your group
+- Player arrow, always on top.
+- Follow mode keeps the map centred on you.
+- Party and raid members in class colours.
+- Death marker at your corpse.
+
+### Pins
+- Flight masters, dungeons and raids, trainers, innkeepers, mailboxes, auctioneers, bankers,
+  anvils and forges, zone links.
+- The game's map pin: Ctrl+right click to set or remove.
+- Quest markers and quest areas (all quests with others dimmed, or tracked only).
+- Ley lines and elemental convergences for the Skyborne racial.
+- Every category has its own toggle; one switch turns all pins off and back on.
+- Pin size adjustable.
+
+### Battlegrounds
+- BG button appears inside a battleground and shows its map with landmarks and your team.
+
+### Performance
+- Redraws only what changed; panning is cheap.
+- Large pin sets load over several frames.
+- Optional update cap (Options, clock button): 60 or 30 map updates per second.
+
+## Addon compatibility
+
+All of these are optional and detected automatically. Their pins are listed under
+**Options → Pins → Other addons**, each with its own toggle.
+
+| Addon | What CloudeMap does with it |
+|---|---|
+| **Questie** | Quest giver, available quest and objective pins. |
+| **HandyNotes** | Pins from every plugin, one toggle per plugin. |
+| **GatherMate2** | Gathering nodes, one toggle per node type, own size slider. |
+| **RareScanner** | Rare pins and spawn areas, sized like RareScanner's own; its tooltip stays while hovered. |
+| **Spy** | Nearby enemy players as red dots at your exact position when last seen (kill on sight brighter, inactive dimmed), its fight markers, and enemies reported by other Spy users. Follows Spy's own timeouts and options. |
+| **ForeverDungeonJournal** | Its dungeon maps shown in the window, switched on automatically inside a dungeon, with zoom and a dungeon picker. Its "Show on Map" X marker (left click targets and marks, right click removes) and dungeon entrance pins on the world map. |
+| **HereBeDragons-Pins** | World map icons from any addon that uses this library. |
+| **Other addons' map pins** | Waypoints set through the game's map pin show up too. |
+
+Other addons can add their own pin categories through `_G.CloudeMap`.
+
+## Slash commands
+
+`/cmap` or `/cloudemap`
+
+| Command | What it does |
+|---|---|
+| *(none)* | show / hide the window |
+| `help` | list the commands in chat |
+| `show`, `hide` | show or hide the window |
+| `me` | back to the hero, Follow on |
+| `follow` | toggle Follow |
+| `map`, `sat`, `mode` | parchment map, satellite, or toggle |
+| `quests dim` / `quests tracked` | quest area mode |
+| `reset` | reset the window position and size |
+| `status`, `debug` | status report in a copy window |
+| `where` | what is under the middle of the view |
+| `prof` | start / stop the profiler (report in a copy window) |
+| `fade` | 3 s log of zone uncovering (diagnostics) |
+
+## Credits
+
+- Unexplored-area data: OpenMap contributors (MIT, see `Reveal.LICENSE.txt`).
+- Ley line positions: the LeyLines addon by Wafhien and contributors (github.com/Wafhi3n/LeyLines).
+
+## Copyleft
+
+CloudeMap is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version. Any copy or modified version you
+distribute must stay under the same license, with its source available.
+
+CloudeMap is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+General Public License for more details: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+Bundled third-party data keeps its own license (see Credits). World of Warcraft and its art are
+trademarks and property of Blizzard Entertainment; CloudeMap is not affiliated with or endorsed
+by Blizzard.
