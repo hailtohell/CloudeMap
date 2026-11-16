@@ -740,6 +740,7 @@ end
 P.RegisterCategory("questarea", { name = "Quest areas", order = 99, noCount = true })
 
 local blobs, bstate, blobOK, questRev = {}, {}, nil, 1
+local bstat = { paints = 0, errors = 0 }      -- quest area draws, for /cmap status
 local BLOB_W, BLOB_H = 1002, 668
 local FILL, EDGE = "Interface\\WorldMap\\UI-QuestBlob-Inside", "Interface\\WorldMap\\UI-QuestBlob-Outside"
 local NCOLORS = 12
@@ -817,6 +818,13 @@ local function Style(f, st, mode, look, border, level)
     f:SetFrameLevel(level + (look == "active" and 3 or 2))
 end
 
+function B.BlobCount()
+    local n, on = 0, 0
+    for k in pairs(blobs) do n = n + 1; if bstate[k] and bstate[k].shown then on = on + 1 end end
+    local ago = bstat.at and GetTime and ("%.1f s ago"):format(GetTime() - bstat.at) or "never"
+    return n, on, bstat.paints, ago, bstat.errors, bstat.err and (" (" .. tostring(bstat.err) .. ")") or ""
+end
+
 function B.RestyleBlobs() for _, st in pairs(bstate) do st.style = nil end end
 
 -- The quests of the log whose area is on this map. A blob frame draws whatever quest it is given
@@ -874,8 +882,10 @@ local function Place(f, st, view)
     if f.GetLeft then f:GetLeft() end           -- resolves the anchors now
 end
 
+-- (no combat pause: the frame is the addon's own and the game's map draws its quest areas in
+-- combat too; skipping it left the areas stuck where they were while the map moved on)
 local function Paint(f, st, view)
-    if InCombatLockdown and InCombatLockdown() then return end
+    bstat.paints, bstat.at = bstat.paints + 1, GetTime and GetTime()
     Place(f, st, view)
     f:DrawNone()
     f:SetMapID(st.mapID)
@@ -924,7 +934,9 @@ local function DrawBlobs(view, canvas, ox, oy, scale, mode, shown, db)
                     local moved = not st.s or abs(st.s - s) > 0.0005 or abs(st.x - x) > 0.25 or abs(st.y - y) > 0.25
                     if moved or st.rev ~= questRev or not st.shown then
                         st.rev, st.s, st.x, st.y, st.shown = questRev, s, x, y, true
-                        Paint(f, st, view)
+                        -- one quest's failure must not stop the others from following the map
+                        local ok, err = pcall(Paint, f, st, view)
+                        if not ok then bstat.errors, bstat.err = bstat.errors + 1, err end
                         if C_Timer and C_Timer.After and not st.pending then
                             st.pending = true
                             C_Timer.After(0, function()
@@ -1793,9 +1805,10 @@ function B.Status()
     local texLine = ""
     texLine = texLine .. " | quest markers: " .. (poiOK == nil and "not drawn yet" or (poiOK and "the game's own buttons" or "plain icons (the game's button template failed)"))
         .. (B.poiErr and (", error: " .. tostring(B.poiErr)) or "")
-    local blobLine = ("quest areas: %s%s%s | "):format(
+    local blobLine = ("quest areas: %s%s%s%s | "):format(
         blobOK == nil and "not drawn yet" or (blobOK and ("game frame working, %d quests in the log, last drawn %s"):format(B.blobQuests or 0, tostring(B.blobLast)) or "the game has no QuestPOIFrame here"),
-        texLine, B.blobErr and (", error: " .. tostring(B.blobErr)) or "")
+        (", %d frames, %d shown, %d draws, last %s, %d failed%s"):format(B.BlobCount()),
+        B.blobErr and (", error: " .. tostring(B.blobErr)) or "", texLine)
     local q = B.qstat
     local Q = _G.Questie
     local prof = type(Q) == "table" and type(Q.db) == "table" and Q.db.profile
