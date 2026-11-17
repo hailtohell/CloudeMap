@@ -847,7 +847,10 @@ local function GameZoneAt(px, py)
         if px >= cn.x and px <= cn.x + cn.w and py >= cn.y and py <= cn.y + cn.h then
             local ok, info = pcall(C_Map.GetMapInfoAtPosition, cn.mapID, (px - cn.x) / cn.w, (py - cn.y) / cn.h)
             local z = ok and type(info) == "table" and byMap[SafeNum(info.mapID) or 0]
-            if z and z.level == 2 and z.files and not z.isCity then return z end
+            -- (the game's hit test is coarse: it can name a zone a little past that zone's own
+            -- map, over its neighbour; such an answer is no answer)
+            if z and z.level == 2 and z.files and not z.isCity
+                and px >= z.x and px <= z.x + z.w and py >= z.y and py <= z.y + z.h then return z end
             return
         end
     end
@@ -1673,6 +1676,12 @@ local function UpdateCursor()
             if not bestD or d < bestD then best, bestD = n, d end
         end
     end
+    -- the zone named is the one the pointer uncovers (the same choice, so the two never disagree)
+    if not (best and best.isCity) then
+        tcache.ro = tcache.ro or {}
+        local t = Territory(px, py, nil, tcache.ro)
+        if t then best = t end
+    end
     if best then
         -- name (and level range), the position below it, and how far it is from the hero
         local text = best.name .. ns.ZoneLevels(best) .. ("\n%.1f, %.1f"):format(100 * (px - best.x) / best.w, 100 * (py - best.y) / best.h)
@@ -1776,6 +1785,30 @@ end
 local function SavePosition()
     local p, _, rp, x, y = frame:GetPoint()
     if p then db.pos = { p, rp, x, y } end
+end
+
+-- Big window: two sizes, each with its own place, like an application window's maximise (but
+-- not the whole screen). Moving or resizing changes the size you are in; the button (or a
+-- double-click on the title bar) switches. Big starts at 88% x 84% of the screen, centred.
+function ns.ToggleBig()
+    if not frame then return end
+    db.geo = db.geo or {}
+    db.geo[db.big and "big" or "normal"] = { w = db.w, h = db.h, pos = db.pos }
+    db.big = not db.big or nil
+    local g = db.geo[db.big and "big" or "normal"]
+    if not g then
+        if db.big then
+            g = { w = floor(UIParent:GetWidth() * 0.88), h = floor(UIParent:GetHeight() * 0.84) }
+        else
+            g = { w = DEF_W, h = DEF_H }
+        end
+    end
+    frame:ClearAllPoints()
+    if g.pos then frame:SetPoint(g.pos[1], UIParent, g.pos[2], g.pos[3], g.pos[4]) else frame:SetPoint("CENTER") end
+    frame:SetSize(g.w, g.h)             -- (OnResize keeps db.w, db.h)
+    db.pos = g.pos
+    SavePosition()
+    if ns.bigBtn then ns.bigBtn.Show_() end
 end
 
 local function OnResize(w, h)
@@ -2264,7 +2297,7 @@ end
 -- out; the map, the title text (zone, levels, position) and the readouts stay as they are. They
 -- come back as soon as the pointer is over the window, and stay while a menu is open or the
 -- window is being moved or resized.
-function ns.ChromeFade(frame, bar, barBg, close, grip, tools)
+function ns.ChromeFade(frame, bar, barBg, close, grip, tools, bigBtn)
     local parts = { barBg }
     -- a strip from a point of the frame (its top left corner) to another (its bottom right corner)
     local function Edge(p1, x1, y1, p2, x2, y2)
@@ -2278,7 +2311,7 @@ function ns.ChromeFade(frame, bar, barBg, close, grip, tools)
     Edge("TOPRIGHT", -PAD, -BAR_H, "BOTTOMRIGHT", 0, 0)                 -- right
     Edge("BOTTOMLEFT", PAD, PAD, "BOTTOMRIGHT", -PAD, 0)                -- bottom
     Edge("TOPLEFT", PAD, -BAR_H, "TOPRIGHT", -PAD, -(BAR_H + PAD))      -- between the bar and the map
-    for _, f in ipairs({ close, grip, tools }) do parts[#parts + 1] = f end
+    for _, f in ipairs({ close, grip, tools, bigBtn }) do parts[#parts + 1] = f end
     local busy, a, away = false, 1, 0
     local function Busy() busy = true end
     local function Free() busy = false end
@@ -2309,7 +2342,10 @@ local function CreateUI()
     else
         frame:SetPoint("CENTER", 0, 0)
     end
-    frame:SetFrameStrata("MEDIUM")
+    -- above the action bars and other addons' bars and texts (MEDIUM and most of HIGH), under
+    -- the game's own dialogs (DIALOG: confirmations, the release-spirit box)
+    frame:SetFrameStrata("HIGH")
+    frame:SetFrameLevel(200)
     frame:SetMovable(true)
     frame:SetResizable(true)
     frame:SetClampedToScreen(true)
@@ -2333,6 +2369,14 @@ local function CreateUI()
     bar:RegisterForDrag("LeftButton")
     bar:SetScript("OnDragStart", function() frame:StartMoving() end)
     bar:SetScript("OnDragStop", function() frame:StopMovingOrSizing(); SavePosition() end)
+    -- a double-click on the title bar switches big / normal, as on an application window
+    -- (frames have no double-click of their own: two clicks within a third of a second)
+    bar:SetScript("OnMouseUp", function(_, button)
+        if button ~= "LeftButton" then return end
+        local now = GetTime()
+        if ns.lastBarClick and now - ns.lastBarClick < 0.33 then ns.lastBarClick = nil; ns.ToggleBig()
+        else ns.lastBarClick = now end
+    end)
     local barBg = bar:CreateTexture(nil, "BACKGROUND")
     barBg:SetAllPoints()
     barBg:SetColorTexture(0.12, 0.12, 0.14, 1)
@@ -2350,10 +2394,34 @@ local function CreateUI()
     close:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
     close:SetScript("OnClick", function() db.shown = false; frame:Hide() end)
 
+    -- big / normal size, beside the close button (also: double-click the title bar)
+    local bigBtn = CreateFrame("Button", nil, bar)
+    bigBtn:SetSize(BAR_H - 4, BAR_H - 4)
+    bigBtn:SetPoint("RIGHT", close, "LEFT", -3, 0)
+    bigBtn:SetFrameLevel(bar:GetFrameLevel() + 6)
+    function bigBtn.Show_()
+        local up = db.big and "Interface\\Buttons\\UI-Panel-SmallerButton-Up" or "Interface\\Buttons\\UI-Panel-BiggerButton-Up"
+        bigBtn:SetNormalTexture(up)
+        bigBtn:SetHighlightTexture(up, "ADD")
+        for _, t in ipairs({ bigBtn:GetNormalTexture(), bigBtn:GetHighlightTexture() }) do
+            if t then t:SetTexCoord(0.22, 0.78, 0.22, 0.78) end       -- (the arrows, without the round button's rim)
+        end
+    end
+    bigBtn.Show_()
+    bigBtn:SetScript("OnClick", function() ns.ToggleBig() end)
+    bigBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+        GameTooltip:SetText(db.big and "Normal size" or "Big window")
+        GameTooltip:AddLine("Also: double-click the title bar. Each size keeps its own place.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    bigBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ns.bigBtn = bigBtn
+
     -- names the map shown when it is not ours (Bridge.lua: a dungeon, a battleground)
     local barText = bar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     barText:SetPoint("LEFT", title, "RIGHT", 10, 0)
-    barText:SetPoint("RIGHT", close, "LEFT", -6, 0)
+    barText:SetPoint("RIGHT", bigBtn, "LEFT", -6, 0)
     barText:SetJustifyH("LEFT")
     barText:SetWordWrap(false)
 
@@ -2520,7 +2588,7 @@ local function CreateUI()
         if not ok and not errShown then errShown = true; Say("update error: " .. tostring(e)) end
     end)
 
-    ns.ChromeFade(frame, bar, barBg, close, grip, tools)
+    ns.ChromeFade(frame, bar, barBg, close, grip, tools, ns.bigBtn)
     frame:SetScript("OnSizeChanged", function(_, w, h) OnResize(w, h) end)
     frame:SetScript("OnShow", function()
         if needOverlays and built then BuildOverlays() end
@@ -2705,7 +2773,8 @@ SlashCmdList.CLOUDEMAP = function(msg)
     elseif msg == "follow" then
         Run(function() if not uiReady then OpenImpl() end SetFollow(not following) end)
     elseif msg == "reset" then
-        db.pos, db.w, db.h, db.vc = nil, DEF_W, DEF_H, nil
+        db.pos, db.w, db.h, db.vc, db.big, db.geo = nil, DEF_W, DEF_H, nil, nil, nil
+        if ns.bigBtn then ns.bigBtn.Show_() end
         if frame then
             frame:ClearAllPoints(); frame:SetPoint("CENTER"); frame:SetSize(DEF_W, DEF_H)
         end

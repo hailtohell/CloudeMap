@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.19.4 · SavedVariables: CloudeMapDB
+Version 0.20.0 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -29,6 +29,9 @@ Version 0.19.4 · SavedVariables: CloudeMapDB
 
 ### Window
 - Move, resize, set opacity; position and size are remembered.
+- Big window button (or double-click the title bar): switches between normal and big size, each
+  remembering its own size and position. Big starts centred at about 88% of the screen.
+- Drawn above action bars and other addons' frames.
 - Frame fades out when the pointer leaves, like Carbonite; map and text stay.
 - Title bar: your zone, its level range and your position.
 - Pointer readout: zone, level range, position and distance from you in yards.
