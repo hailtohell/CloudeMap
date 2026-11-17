@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.20.0 · SavedVariables: CloudeMapDB
+Version 0.19.5 · SavedVariables: CloudeMapDB
 
 ---
 
