@@ -899,6 +899,7 @@ local zoneQuests, zoneRev = {}, {}
 local function DrawBlobs(view, canvas, ox, oy, scale, mode, shown, db)
     local used = {}
     last.view, last.ox, last.oy, last.scale, last.shown = view, ox, oy, scale, shown
+    last.canvas, last.level, last.mode = canvas, canvas:GetFrameLevel(), mode
     if P.IsEnabled("questarea") then
         local quests
         local active = ActiveQuest()
@@ -971,6 +972,30 @@ local function QuestDone(q)
     return false
 end
 
+-- Pointing at a quest marker lights up its quest's area, as on the game's map: the area drawn
+-- the game's way (as its active quest) above the others, whether quest areas are on or not.
+local hl, hlSt
+function B.QuestHover(q, n)
+    if hl then hl:Hide() end
+    hlSt = nil
+    if not (q and n and last.view and last.scale) or blobOK == false then return end
+    if not hl then
+        hl = NewBlob(last.view, last.canvas)
+        if not hl then return end
+    end
+    local st = { mapID = n.mapID, quest = q, node = n }
+    Style(hl, st, last.mode or "map", "active", 1, last.level or 0)
+    hl:SetFrameLevel((last.level or 0) + 5)      -- above the other areas, under the markers
+    st.s = n.w * last.scale / BLOB_W
+    st.x, st.y = last.ox + n.x * last.scale, last.oy + n.y * last.scale
+    st.shown = true
+    hlSt = st
+    pcall(Paint, hl, st, last.view)
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function() if hlSt == st then pcall(Paint, hl, st, last.view) end end)
+    end
+end
+
 local function NewPoi(view, canvas)
     local ok, f = pcall(CreateFrame, "Button", nil, view, "POIButtonTemplate")
     if not ok or type(f) ~= "table" or type(f.SetQuestID) ~= "function" then
@@ -978,8 +1003,11 @@ local function NewPoi(view, canvas)
         return
     end
     f:SetFrameLevel(canvas:GetFrameLevel() + 8)
-    f:HookScript("OnEnter", function(self) if self.smQuest and QuestTip then QuestTip(self.smQuest, self) end end)
-    f:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    f:HookScript("OnEnter", function(self)
+        if self.smQuest and QuestTip then QuestTip(self.smQuest, self) end
+        if self.smQuest then B.QuestHover(self.smQuest, self.smNode) end
+    end)
+    f:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end; B.QuestHover() end)
     return f
 end
 
@@ -1014,6 +1042,7 @@ local function DrawPois(view, canvas, ox, oy, scale, mode, shown, db)
                     if not f then break end
                     pois[key] = f
                     used[key] = true
+                    f.smNode = n
                     local sig = questRev * 2 + (q == active and 1 or 0)
                     if poiState[key] ~= sig then
                         local ok, err = pcall(SetupPoi, f, q, q == active)
@@ -1049,9 +1078,13 @@ local function DrawPois(view, canvas, ox, oy, scale, mode, shown, db)
                     for _, q in ipairs(zoneQuests[n.mapID] or {}) do
                         local p = xy and xy[q]
                         if p then
-                            pins[#pins + 1] = { map = n.mapID, x = p[1], y = p[2], size = 22, quest = q,
+                            pins[#pins + 1] = { map = n.mapID, x = p[1], y = p[2], size = 22, quest = q, node = n,
                                 texture = QuestDone(q) and "Interface\\GossipFrame\\ActiveQuestIcon" or "Interface\\GossipFrame\\IncompleteQuestIcon",
-                                onEnter = function(btn, pin) if QuestTip then QuestTip(pin.quest, btn) end end }
+                                onEnter = function(btn, pin)
+                                    if QuestTip then QuestTip(pin.quest, btn) end
+                                    B.QuestHover(pin.quest, pin.node)
+                                end,
+                                onLeave = function() B.QuestHover() end }
                         end
                     end
                 end
@@ -1111,20 +1144,51 @@ end
 
 -- Hovering an area: the quest's name and objectives, as on the game's map
 local tipQuest, tipOwner
+-- The tooltip of a quest, made the way the game's own map makes it for its quest markers
+-- (QuestPinMixin:OnMouseEnter): the title with the quest's level and difficulty colour ("[21]
+-- Eight-Legged Menaces"), its type and time left, then what is still to do. Whatever the game
+-- or another addon (Questie) adds to that tooltip of the game's comes along. Where the game's
+-- helpers are missing, the plain title and every objective.
+local function Try(fn, ...) if type(fn) == "function" then local ok, v = pcall(fn, ...); if ok then return v end end end
 function QuestTip(q, view)
     if not GameTooltip then return end
     local title
-    if C_QuestLog and C_QuestLog.GetTitleForQuestID then title = C_QuestLog.GetTitleForQuestID(q) end
+    if C_QuestLog and C_QuestLog.GetTitleForQuestID then title = Try(C_QuestLog.GetTitleForQuestID, q) end
+    title = title or ("Quest " .. q)
+    title = Try(_G.SetQuestTitleLevelAndDifficultyColor, q, title) or title
     if not pcall(GameTooltip.SetOwner, GameTooltip, view, "ANCHOR_CURSOR_RIGHT", 5, 2) then
         GameTooltip:SetOwner(view, "ANCHOR_CURSOR")
     end
-    GameTooltip:SetText(title or ("Quest " .. q))
-    local objs = C_QuestLog and C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(q)
-    if type(objs) == "table" then
-        for _, o in ipairs(objs) do
-            if type(o) == "table" and type(o.text) == "string" and o.text ~= "" then
-                if o.finished then GameTooltip:AddLine("- " .. o.text, 0.6, 0.6, 0.6, true)
-                else GameTooltip:AddLine("- " .. o.text, 1, 1, 1, true) end
+    GameTooltip:SetText(title)
+    Try(_G.QuestUtils_AddQuestTypeToTooltip, GameTooltip, q, _G.NORMAL_FONT_COLOR)
+    Try(_G.GameTooltip_CheckAddQuestTimeToTooltip, GameTooltip, q)
+    local dash = _G.QUEST_DASH or "- "
+    local index = C_QuestLog and C_QuestLog.GetLogIndexForQuestID and Try(C_QuestLog.GetLogIndexForQuestID, q)
+    local done = QuestDone(q)
+    local tracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and Try(C_SuperTrack.GetSuperTrackedQuestID) == q
+    local way = tracked and C_QuestLog.GetNextWaypointText and Try(C_QuestLog.GetNextWaypointText, q)
+    if type(way) == "string" and way ~= "" then
+        GameTooltip:AddLine(dash .. way, 1, 1, 1, true)
+    elseif index and GetNumQuestLeaderBoards and GetQuestLogLeaderBoard then
+        if not done then
+            local drops = GetNumQuestItemDrops and Try(GetNumQuestItemDrops, index) or 0
+            local count, get = drops, GetQuestLogItemDrop
+            if not (type(count) == "number" and count > 0 and get) then
+                count, get = Try(GetNumQuestLeaderBoards, index) or 0, GetQuestLogLeaderBoard
+            end
+            for i = 1, count do
+                local ok, text, _, finished = pcall(get, i, index)
+                if ok and text and not finished then GameTooltip:AddLine(dash .. text, 1, 1, 1, true) end
+            end
+        end
+    else
+        local objs = C_QuestLog and C_QuestLog.GetQuestObjectives and Try(C_QuestLog.GetQuestObjectives, q)
+        if type(objs) == "table" then
+            for _, o in ipairs(objs) do
+                if type(o) == "table" and type(o.text) == "string" and o.text ~= "" then
+                    if o.finished then GameTooltip:AddLine(dash .. o.text, 0.6, 0.6, 0.6, true)
+                    else GameTooltip:AddLine(dash .. o.text, 1, 1, 1, true) end
+                end
             end
         end
     end
