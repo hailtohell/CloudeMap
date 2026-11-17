@@ -2159,11 +2159,34 @@ local function CreateOptions(anchor)
                 function(v) return ("GatherMate pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
             table.insert(items, 3, gmSlider)
         end
+        -- only with the Dungeon Journal around: whether its window and ours follow each other
+        if not optMenu.djRow and type(_G.ForeverDungeonJournal_NS) == "table" then
+            local row = MakeButton(optMenu, "", 180, function()
+                db.djSync = (db.djSync == false) and nil or false
+                optMenu.djRow.Show_()
+            end, function()
+                return "Dungeon Journal sync: " .. (db.djSync == false and "off" or "on")
+                    .. ".\nOn: a dungeon or floor picked in the journal's map is shown in CloudeMap's, and one picked here is shown in the journal."
+                    .. "\nOff: the two maps are independent."
+            end)
+            row.text:ClearAllPoints()
+            row.text:SetPoint("LEFT", 6, 0)
+            function row.Show_()
+                row.text:SetText("Dungeon Journal sync: " .. (db.djSync == false and "|cff999999off|r" or "|cff40d040on|r"))
+            end
+            row.Show_()
+            row.full = true
+            optMenu.djRow = row
+            items[#items + 1] = row
+        end
         local y = -8
         local firstEntry
         for _, it in ipairs(items) do
             it:ClearAllPoints()
-            if rawget(it, "label") then
+            if rawget(it, "full") then
+                it:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y)
+                y = y - 24
+            elseif rawget(it, "label") then
                 it.label:ClearAllPoints()
                 it.label:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y)
                 it:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y - 18)
@@ -2342,10 +2365,7 @@ local function CreateUI()
     else
         frame:SetPoint("CENTER", 0, 0)
     end
-    -- above the action bars and other addons' bars and texts (MEDIUM and most of HIGH), under
-    -- the game's own dialogs (DIALOG: confirmations, the release-spirit box)
-    frame:SetFrameStrata("HIGH")
-    frame:SetFrameLevel(200)
+    frame:SetFrameStrata("MEDIUM")
     frame:SetMovable(true)
     frame:SetResizable(true)
     frame:SetClampedToScreen(true)

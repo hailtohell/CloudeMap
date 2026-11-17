@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.19.5 · SavedVariables: CloudeMapDB
+Version 0.19.6 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -31,7 +31,6 @@ Version 0.19.5 · SavedVariables: CloudeMapDB
 - Move, resize, set opacity; position and size are remembered.
 - Big window button (or double-click the title bar): switches between normal and big size, each
   remembering its own size and position. Big starts centred at about 88% of the screen.
-- Drawn above action bars and other addons' frames.
 - Frame fades out when the pointer leaves, like Carbonite; map and text stay.
 - Title bar: your zone, its level range and your position.
 - Pointer readout: zone, level range, position and distance from you in yards.
@@ -75,7 +74,7 @@ All of these are optional and detected automatically. Their pins are listed unde
 | **GatherMate2** | Gathering nodes, one toggle per node type, own size slider. |
 | **RareScanner** | Rare pins and spawn areas, sized like RareScanner's own; its tooltip stays while hovered. |
 | **Spy** | Nearby enemy players as red dots at your exact position when last seen (kill on sight brighter, inactive dimmed), its fight markers, and enemies reported by other Spy users. Follows Spy's own timeouts and options. |
-| **ForeverDungeonJournal** | Its dungeon maps shown in the window, switched on automatically inside a dungeon, with zoom and a dungeon picker. Its "Show on Map" X marker (left click targets and marks, right click removes) and dungeon entrance pins on the world map. |
+| **ForeverDungeonJournal** | Its dungeon maps drawn by CloudeMap itself (both windows can show them at once): floors, bosses with portraits, entrances, ladders between floors, quest spots; fitted to the window, wheel zoom and drag, dungeon picker; switched on automatically inside a dungeon. Optional sync (Options): a dungeon or floor picked in one window is shown in the other. Its "Show on Map" X marker (left click targets and marks, right click removes) and dungeon entrance pins on the world map. |
 | **HereBeDragons-Pins** | World map icons from any addon that uses this library. |
 | **Other addons' map pins** | Waypoints set through the game's map pin show up too. |
 
