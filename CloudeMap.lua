@@ -1026,6 +1026,21 @@ local function UpdatePins()
             for _, z in ipairs(zoneList) do
                 if (z.alpha or 0) * (z.zoomA or 0) > 0.5 then shown[#shown + 1] = z end
             end
+            -- cities have maps of their own, and the game files a quest given or ended in town
+            -- under the city, not the zone round it: a city counts as drawn when its own map is,
+            -- or when the zone it lies in is (its quests then show where the city is)
+            local nz = #shown
+            for _, c in ipairs(cityList) do
+                local on = (c.alpha or 0) * (c.zoomA or 0) > 0.5
+                if not on then
+                    local cx, cy = c.x + c.w / 2, c.y + c.h / 2
+                    for i = 1, nz do
+                        local z = shown[i]
+                        if cx >= z.x and cx <= z.x + z.w and cy >= z.y and cy <= z.y + z.h then on = true; break end
+                    end
+                end
+                if on then shown[#shown + 1] = c end
+            end
         end
         -- the zones whose pins can show, for the addons that read pins per zone (GatherMate,
         -- RareScanner): the zone in detail shows its pins from the moment it starts to fade in,
