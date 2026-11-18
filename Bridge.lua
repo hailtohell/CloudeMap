@@ -2171,9 +2171,16 @@ do
         v.empty = n == 0
     end
 
-    -- a boss's picture: the journal's own portrait (from its pool, so no black square shows
-    -- while the model loads), else its special icons; false when it has none
+    -- a boss's picture: the journal's own (FDJ.SetBossPortrait, the one its map, list and run
+    -- log use: its bundled pictures, the game's journal data, its saved and resolved display IDs,
+    -- from its pool so no black square shows while a model loads); with an older journal
+    -- without it, the same from the boss record and the saved display IDs. False: none.
     local function Portrait(FDJ, tex, rec)
+        if type(rec) ~= "table" then return false end
+        if type(FDJ.SetBossPortrait) == "function" then
+            local ok, shown = pcall(FDJ.SetBossPortrait, tex, dj.name, rec)
+            if ok then return shown and true or false end
+        end
         if FDJ.ReleasePortrait then pcall(FDJ.ReleasePortrait, tex) end
         tex:SetTexture(nil)
         tex:SetTexCoord(0, 1, 0, 1)
@@ -2232,7 +2239,7 @@ do
         local book = type(FDJ.DB) == "table" and FDJ.DB[dname] or nil
         -- bosses (a quest's target only with its quest, as the journal shows them)
         local size = floor(math.max(26, floor(bh * 0.095)) * (Call(FDJ, "MapBossScale") or 1))
-        local nb = 0
+        local nb, missing = 0, 0
         for _, mb in ipairs(type(data.bosses) == "table" and data.bosses or {}) do
             local qe
             if mb.quest then
@@ -2250,6 +2257,7 @@ do
                 local rpg = Call(FDJ, "RPGMapBossHidden", dname, rec) and true or false
                 local who = (not rpg) and (rec or (mb.npcID and { name = mb.name, npcID = mb.npcID })) or nil
                 if not Portrait(FDJ, b.icon, who) then
+                    if who then missing = missing + 1 end
                     b.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
                     b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 end
@@ -2272,6 +2280,17 @@ do
             end
         end
         for i = nb + 1, #v.boss do v.boss[i]:Hide() end
+        -- the journal works out some portraits in the background: drawn again a little later
+        -- (a few times at most for one map)
+        local key = tostring(dname) .. ":" .. level
+        if missing > 0 and C_Timer and C_Timer.After and (v.retryKey ~= key or (v.retries or 0) < 4) then
+            if v.retryKey ~= key then v.retryKey, v.retries = key, 0 end
+            if not v.retryDue then
+                v.retryDue = true
+                v.retries = v.retries + 1
+                C_Timer.After(3, function() v.retryDue = nil; if dj.on and v.retryKey == tostring(dj.name) .. ":" .. tostring(dj.floor) then pcall(dj.Draw, false) end end)
+            end
+        end
 
         -- entrances, with their label
         local ne = 0
