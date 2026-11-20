@@ -120,7 +120,7 @@ function P.RegisterCategory(id, def)
         P.cats[id] = c
         P.order[#P.order + 1] = id
     end
-    for _, k in ipairs({ "name", "default", "minScale", "size", "atlas", "texture", "texCoord", "order", "color", "always", "noCount", "scaleKey", "addon", "bulk" }) do
+    for _, k in ipairs({ "name", "default", "minScale", "size", "atlas", "texture", "texCoord", "order", "color", "always", "noCount", "scaleKey", "addon", "bulk", "absolute" }) do
         if def[k] ~= nil then c[k] = def[k] end
     end
     SortOrder()

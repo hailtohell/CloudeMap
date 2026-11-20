@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.19.7 · SavedVariables: CloudeMapDB
+Version 0.19.8 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -42,7 +42,7 @@ Version 0.19.7 · SavedVariables: CloudeMapDB
 ### You and your group
 - Player arrow, always on top.
 - Follow mode keeps the map centred on you.
-- Party and raid members in class colours.
+- Party and raid members in class colours, the same size at every zoom (own size slider in Options).
 - Death marker at your corpse.
 
 ### Pins
@@ -53,6 +53,16 @@ Version 0.19.7 · SavedVariables: CloudeMapDB
 - Ley lines and elemental convergences for the Skyborne racial.
 - Every category has its own toggle; one switch turns all pins off and back on.
 - Pin size adjustable.
+
+### Group pings
+- Alt+click the map to ping a spot for your party or raid; group members with CloudeMap see it.
+- Drawn like the minimap ping (the game's own ping pictures), at the minimap's size at any zoom.
+- A ping outside the part of the map in view shows at the window's edge, pointing towards it.
+- Works with the minimap: a ping within your minimap is also sent as a minimap ping (the whole
+  group sees it, CloudeMap or not), and the group's minimap pings show on this map.
+- Sound to choose (map ping by default, whisper, boss warning, ready check, raid warning, or none;
+  no extra sound when the game already played its minimap ping) and an optional chat line, in
+  Options -> Pings.
 
 ### Battlegrounds
 - BG button appears inside a battleground and shows its map with landmarks and your team.

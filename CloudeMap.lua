@@ -982,7 +982,9 @@ local function UpdatePins()
                         b:SetFrameLevel(pinsFrame:GetFrameLevel() + 1 + (p.level or 0))     -- (level: what lies on top)
                     end
                     -- (a pin can size itself from how wide its zone is on screen: RareScanner's spots)
-                    local s = p.sizeFn and p.sizeFn(n.w * scale) or b.base * zf * (c.scaleKey and db[c.scaleKey] or 1)
+                    -- (absolute: the same size at every zoom, by its own slider only: party members)
+                    local s = p.sizeFn and p.sizeFn(n.w * scale)
+                        or b.base * (c.absolute and 1 or zf) * (c.scaleKey and db[c.scaleKey] or 1)
                     if b.sz ~= s then b.sz = s; b:SetSize(s, s) end
                     b:ClearAllPoints()
                     -- (a pin can sit a few pixels off its point, dx right / dy up: Spy's enemies, kept
@@ -1657,10 +1659,9 @@ local function Yards(cn)
     return cn.ypc
 end
 
-local function UpdateCursor()
-    if not view:IsMouseOver() then info:SetText("") return end
-    local cx, cy = CursorInView()
-    local px, py = (cx - ox) / scale, (cy - oy) / scale
+-- The zone at a point of the canvas, as the pointer readout names it (and the pointer uncovers):
+-- a city wherever its map is, else the zone the game (or the zones' pieces) says.
+function tcache.PickAt(px, py)
     local best, bestD
     for _, n in ipairs(nodes) do
         if n.level > 0 and px >= n.x and px <= n.x + n.w and py >= n.y and py <= n.y + n.h then
@@ -1682,6 +1683,25 @@ local function UpdateCursor()
         local t = Territory(px, py, nil, tcache.ro)
         if t then best = t end
     end
+    return best
+end
+ns.PickAt = function(px, py) return tcache.PickAt(px, py) end
+-- a zone's node by its map ID (pings from the group are sent by map and position in it)
+ns.NodeOf = function(mapID) return byMap[mapID] end
+-- the hero on the canvas and the yards in one canvas unit of the hero's continent (minimap pings)
+ns.HeroCanvas = function()
+    if not (plX and plNode) then return end
+    local cn = plNode
+    while cn and cn.level > 1 do cn = cn.parent end
+    local ypc = cn and Yards(cn)
+    if ypc then return plX, plY, ypc end
+end
+
+local function UpdateCursor()
+    if not view:IsMouseOver() then info:SetText("") return end
+    local cx, cy = CursorInView()
+    local px, py = (cx - ox) / scale, (cy - oy) / scale
+    local best = tcache.PickAt(px, py)
     if best then
         -- name (and level range), the position below it, and how far it is from the hero
         local text = best.name .. ns.ZoneLevels(best) .. ("\n%.1f, %.1f"):format(100 * (px - best.x) / best.w, 100 * (py - best.y) / best.h)
@@ -2150,6 +2170,9 @@ local function CreateOptions(anchor)
     items[2] = Slider(0.5, 2.5, 0.1, db.pinSize or 1,
         function(v) db.pinSize = v; dirty, tcache.pan = true, false end,
         function(v) return ("Pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
+    items[3] = Slider(0.5, 3, 0.1, db.partySize or 1,
+        function(v) db.partySize = v; dirty, tcache.pan = true, false end,
+        function(v) return ("Party pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
     -- only with GatherMate2 around (it may load after the map was first opened: looked for at every opening)
     local gmSlider
     local function Layout()
@@ -2157,7 +2180,18 @@ local function CreateOptions(anchor)
             gmSlider = Slider(0.1, 1, 0.05, clamp(db.gmSize or 1, 0.1, 1),
                 function(v) db.gmSize = v; dirty, tcache.pan = true, false end,
                 function(v) return ("GatherMate pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
-            table.insert(items, 3, gmSlider)
+            table.insert(items, 4, gmSlider)
+        end
+        -- pings for the group: a menu of their own (Bridge.lua)
+        if not optMenu.pingRow and ns.PingMenu then
+            local row
+            row = MakeButton(optMenu, "Pings  >", 180, function() ns.PingMenu(row) end,
+                "Pings for your party or raid: Alt+click the map. Turn them on or off, the chat line and the sound.")
+            row.text:ClearAllPoints()
+            row.text:SetPoint("LEFT", 6, 0)
+            row.full = true
+            optMenu.pingRow = row
+            items[#items + 1] = row
         end
         -- only with the Dungeon Journal around: whether its window and ours follow each other
         if not optMenu.djRow and type(_G.ForeverDungeonJournal_NS) == "table" then
@@ -2562,6 +2596,11 @@ local function CreateUI()
         if IsControlKeyDown() and ns.onCtrlClick and btn == "RightButton" then
             local cx, cy = CursorInView()
             Run(function() ns.onCtrlClick((cx - ox) / scale, (cy - oy) / scale, scale) end)
+        end
+        -- Alt+left click: a ping for the group (Bridge.lua), not after a drag
+        if IsAltKeyDown and IsAltKeyDown() and ns.onAltClick and btn == "LeftButton" and not dragMoved then
+            local cx, cy = CursorInView()
+            Run(function() ns.onAltClick((cx - ox) / scale, (cy - oy) / scale) end)
         end
     end)
 
