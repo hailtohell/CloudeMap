@@ -1237,6 +1237,9 @@ end
 -- Ctrl+click: drop (or lift) the game's own map pin, the one the world map's "Map Pin" button places
 function ns.onCtrlClick(px, py, sc)
     if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint) then return end
+    -- (the same click may already have been handled by the map pin itself, Bridge.lua)
+    if ns.wpAt and GetTime() - ns.wpAt < 0.3 then return end
+    ns.wpAt = GetTime()
     local n
     if cityFocus and px >= cityFocus.x and px <= cityFocus.x + cityFocus.w and py >= cityFocus.y and py <= cityFocus.y + cityFocus.h then
         n = cityFocus

@@ -579,11 +579,19 @@ end
 P.RegisterCategory("waypoint", { name = "Map pin", order = 5, minScale = 0, size = 28, always = true,
     atlas = { "Waypoint-MapPin-Tracked", "Waypoint-MapPin-Untracked" }, texture = "Interface\\Icons\\INV_Misc_Map02" })
 
+-- Ctrl+right click on the map pin lifts it: the click lands on the pin, and the map behind it
+-- may not get it (when it does, whichever comes second sees the click as handled)
+local function WaypointClick(_, btn)
+    if btn ~= "RightButton" or not IsControlKeyDown() then return end
+    if ns.wpAt and GetTime() - ns.wpAt < 0.3 then return end
+    ns.wpAt = GetTime()
+    if C_Map.ClearUserWaypoint then C_Map.ClearUserWaypoint() end
+end
 local function ReadWaypoint()
     local w = C_Map and C_Map.GetUserWaypoint and C_Map.GetUserWaypoint()
     if type(w) == "table" and w.uiMapID and type(w.position) == "table" then
         P.SetPins("waypoint", { { map = w.uiMapID, x = w.position.x, y = w.position.y, name = "Map pin",
-            text = "Ctrl+right click it to remove" } })
+            text = "Ctrl+right click it to remove", onClick = WaypointClick } })
     else
         P.SetPins("waypoint", {})
     end
@@ -722,10 +730,10 @@ local function ReadParty()
 end
 B.ReadParty = ReadParty
 if C_Timer and C_Timer.NewTicker then
-    C_Timer.NewTicker(0.25, function()
+    C_Timer.NewTicker(1 / 12, function()
         local f = _G.CloudeMapFrame
         if f and f.IsShown and f:IsShown() then
-            local ok, err = ns.prof.Time("every 0.25 s: party markers", pcall, ReadParty)
+            local ok, err = ns.prof.Time("every 1/12 s: party markers", pcall, ReadParty)
             if not ok then B.partyErr = err end
         end
     end)
