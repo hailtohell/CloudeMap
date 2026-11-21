@@ -985,6 +985,8 @@ local function UpdatePins()
                     -- (absolute: the same size at every zoom, by its own slider only: party members)
                     local s = p.sizeFn and p.sizeFn(n.w * scale)
                         or b.base * (c.absolute and 1 or zf) * (c.scaleKey and db[c.scaleKey] or 1)
+                    -- (minSize: a floor on screen, so a category stays visible zoomed right out)
+                    if c.minSize and s < c.minSize then s = c.minSize end
                     if b.sz ~= s then b.sz = s; b:SetSize(s, s) end
                     b:ClearAllPoints()
                     -- (a pin can sit a few pixels off its point, dx right / dy up: Spy's enemies, kept
@@ -1924,6 +1926,106 @@ end
 
 
 ---------------------------------------------------------------------------
+-- The lists beside the Options menu (Pins, Quest areas, Pings) share one look: the Pins list's.
+-- A dark panel; rows 20 high with a faint highlight; a checkbox for what can be on or off, a
+-- round button for one choice of several, a gold heading over a group; ticked text white,
+-- unticked grey. ns.MenuPanel() makes the panel, ns.FillMenu(panel, items) lays out its rows:
+--   { kind = "check" | "radio" | "head", text = string or fn, on = fn, click = fn, tip = string or fn }
+---------------------------------------------------------------------------
+function ns.MenuPanel()
+    local f = CreateFrame("Frame", nil, frame)
+    f:SetFrameStrata("DIALOG")
+    if f.SetIgnoreParentAlpha then f:SetIgnoreParentAlpha(true) end     -- the menus stay readable
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+    f:EnableMouse(true)
+    f:SetClampedToScreen(true)                      -- a list never runs off the screen
+    f:Hide()
+    f.rows = {}
+    return f
+end
+function ns.FillMenu(m, items)
+    local function Value(v) if type(v) == "function" then return v() end return v end
+    local function Paint(row)
+        local it = row.item
+        local on = it.on and it.on() or false
+        row.label:SetText(Value(it.text))
+        if it.kind == "head" then
+            row.label:SetTextColor(1, 0.82, 0)
+        else
+            row.label:SetTextColor(on and 1 or 0.6, on and 1 or 0.6, on and 1 or 0.6)
+            if on then row.check:Show() else row.check:Hide() end
+        end
+    end
+    local y, widest = -8, 150
+    for i, it in ipairs(items) do
+        local row = m.rows[i]
+        if not row then
+            row = CreateFrame("Button", nil, m)
+            local hl = row:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints()
+            hl:SetColorTexture(1, 1, 1, 0.08)
+            row.box = row:CreateTexture(nil, "ARTWORK")
+            row.box:SetSize(18, 18)
+            row.box:SetPoint("LEFT", 6, 0)
+            row.check = row:CreateTexture(nil, "OVERLAY")
+            row.check:SetSize(18, 18)
+            row.check:SetPoint("CENTER", row.box, "CENTER", 0, 0)
+            row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.label:SetJustifyH("LEFT")
+            row:SetScript("OnClick", function(self)
+                if not self.item.click then return end
+                self.item.click()
+                for _, r in ipairs(m.rows) do if r:IsShown() and r.item then Paint(r) end end
+            end)
+            row:SetScript("OnEnter", function(self)
+                local tip = self.item.tip
+                if tip and GameTooltip then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(Value(tip), 1, 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end)
+            row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            m.rows[i] = row
+        end
+        row.item = it
+        local head = it.kind == "head"
+        row:ClearAllPoints()
+        if head and i > 1 then y = y - 4 end
+        row:SetPoint("TOPLEFT", m, "TOPLEFT", 4, y)
+        row:SetPoint("TOPRIGHT", m, "TOPRIGHT", -4, y)
+        row:SetHeight(head and 16 or 20)
+        row:EnableMouse(not head)
+        row.label:ClearAllPoints()
+        if head then
+            row.box:Hide(); row.check:Hide()
+            row.label:SetPoint("LEFT", 8, 0)
+        else
+            local radio = it.kind == "radio"
+            row.box:SetTexture(radio and "Interface\\Buttons\\UI-RadioButton" or "Interface\\Buttons\\UI-CheckBox-Up")
+            row.check:SetTexture(radio and "Interface\\Buttons\\UI-RadioButton" or "Interface\\Buttons\\UI-CheckBox-Check")
+            if radio then
+                row.box:SetSize(14, 14); row.check:SetSize(14, 14)
+                row.box:SetTexCoord(0, 0.25, 0, 1); row.check:SetTexCoord(0.25, 0.5, 0, 1)
+            else
+                row.box:SetSize(18, 18); row.check:SetSize(18, 18)
+                row.box:SetTexCoord(0, 1, 0, 1); row.check:SetTexCoord(0, 1, 0, 1)
+            end
+            row.box:Show()
+            row.label:SetPoint("LEFT", row.box, "RIGHT", radio and 6 or 4, 0)
+        end
+        Paint(row)
+        row:Show()
+        widest = max(widest, (row.label:GetStringWidth() or 0) + (head and 24 or 40))
+        y = y - (head and 18 or 20)
+    end
+    for i = #items + 1, #m.rows do m.rows[i]:Hide() end
+    m:SetSize(widest + 8, -y + 6)
+end
+
+---------------------------------------------------------------------------
 -- Pins menu: one checkbox per category in the registry. Categories drawn for other addons go in
 -- a list of their own, opened from the "Other addons" entry at the bottom: one checkbox each,
 -- under the addon's name when it has more than one.
@@ -2107,9 +2209,12 @@ end
 -- list beside it (to the left: the menu hangs from the right end of the title bar).
 local function CreateOptions(anchor)
     local questMenu
-    local function CloseSubs()
-        if pinMenu then pinMenu:Hide() end
-        if questMenu then questMenu:Hide() end
+    -- one list beside the menu at a time (keep: the one about to open)
+    local function CloseSubs(keep)
+        if pinMenu and pinMenu ~= keep then pinMenu:Hide() end
+        if questMenu and questMenu ~= keep then questMenu:Hide() end
+        local pm = ns.bridge and ns.bridge.pingMenu
+        if pm and pm ~= keep then pm:Hide() end
     end
     local optBtn = MakeButton(anchor, "Options", 52, function()
         if optMenu:IsShown() then
@@ -2163,7 +2268,6 @@ local function CreateOptions(anchor)
             set(v)
             label:SetText(text(v))
         end)
-        s:SetScript("OnEnter", CloseSubs)
         return s
     end
     local items = {}                -- top to bottom; laid out whenever the menu opens
@@ -2178,6 +2282,18 @@ local function CreateOptions(anchor)
         function(v) return ("Party pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
     -- only with GatherMate2 around (it may load after the map was first opened: looked for at every opening)
     local gmSlider
+    -- a list of an entry opens beside the menu: to the right if the screen has the room, else to the left
+    local function Beside(sub, entry)
+        local es = optMenu:GetEffectiveScale()
+        local room = (UIParent:GetRight() or 0) * UIParent:GetEffectiveScale() - (optMenu:GetRight() or 0) * es
+        sub:ClearAllPoints()
+        if room >= (sub:GetWidth() + 6) * es then
+            sub:SetPoint("TOPLEFT", entry, "TOPRIGHT", 12, 4)
+        else
+            sub:SetPoint("TOPRIGHT", entry, "TOPLEFT", -12, 4)
+        end
+    end
+
     local function Layout()
         if not gmSlider and _G.GatherMate2 then
             gmSlider = Slider(0.1, 1, 0.05, clamp(db.gmSize or 1, 0.1, 1),
@@ -2188,7 +2304,12 @@ local function CreateOptions(anchor)
         -- pings for the group: a menu of their own (Bridge.lua)
         if not optMenu.pingRow and ns.PingMenu then
             local row
-            row = MakeButton(optMenu, "Pings  >", 180, function() ns.PingMenu(row) end,
+            row = MakeButton(optMenu, "Pings   >", 180, function()
+                local pm = ns.bridge and ns.bridge.pingMenu
+                if pm and pm:IsShown() then pm:Hide() return end
+                CloseSubs(pm)
+                Beside(ns.PingMenu(), row)
+            end,
                 "Pings for your party or raid: Alt+click the map. Turn them on or off, the chat line and the sound.")
             row.text:ClearAllPoints()
             row.text:SetPoint("LEFT", 6, 0)
@@ -2199,7 +2320,7 @@ local function CreateOptions(anchor)
         -- only with the Dungeon Journal around: whether its window and ours follow each other
         if not optMenu.djRow and type(_G.ForeverDungeonJournal_NS) == "table" then
             local row = MakeButton(optMenu, "", 180, function()
-                db.djSync = (db.djSync == false) and nil or false
+                if db.djSync == false then db.djSync = nil else db.djSync = false end
                 optMenu.djRow.Show_()
             end, function()
                 return "Dungeon Journal sync: " .. (db.djSync == false and "off" or "on")
@@ -2243,52 +2364,37 @@ local function CreateOptions(anchor)
     end
     optMenu:SetScript("OnShow", Layout)
 
-    -- a list of an entry opens beside the menu: to the right if the screen has the room, else to the left
-    local function Beside(sub, entry)
-        local es = optMenu:GetEffectiveScale()
-        local room = (UIParent:GetRight() or 0) * UIParent:GetEffectiveScale() - (optMenu:GetRight() or 0) * es
-        sub:ClearAllPoints()
-        if room >= (sub:GetWidth() + 6) * es then
-            sub:SetPoint("TOPLEFT", entry, "TOPRIGHT", 12, 4)
-        else
-            sub:SetPoint("TOPRIGHT", entry, "TOPLEFT", -12, 4)
-        end
-    end
 
-    -- an entry with a list of its own: opens on hover and on click, beside the entry
+    -- an entry with a list of its own, as Pings: a click opens it beside the entry and closes the
+    -- others, a second click closes it
     local function Entry(text, open)
         local b = MakeButton(optMenu, text .. "   >", 180 - 48, open)
         b.text:ClearAllPoints()
         b.text:SetPoint("LEFT", 6, 0)
-        b:HookScript("OnEnter", function() Run(open) end)
         items[#items + 1] = b
         return b
     end
 
     pinsBtn = Entry("Pins", function()
-        if questMenu then questMenu:Hide() end
-        if not (pinMenu and pinMenu:IsShown()) then TogglePinMenu() end
+        if pinMenu and pinMenu:IsShown() then pinMenu:Hide() return end
+        CloseSubs(pinMenu)
+        TogglePinMenu()
         Beside(pinMenu, pinsBtn)
     end)
 
     local questRows = {}
     local questEntry
     questEntry = Entry("Quest areas", function()
-        if pinMenu then pinMenu:Hide() end
+        if questMenu and questMenu:IsShown() then questMenu:Hide() return end
+        CloseSubs(questMenu)
         if not questMenu then
-            questMenu = Panel(210, 52)
-            local y = -6
+            questMenu = ns.MenuPanel()
             for _, mode in ipairs({ "dim", "tracked" }) do
-                local row = MakeButton(questMenu, "", 198, function() SetQuestMode(mode) end, QM.tip[mode])
-                row:SetPoint("TOPLEFT", 6, y)
-                row.text:ClearAllPoints()
-                row.text:SetPoint("LEFT", 6, 0)
-                row.mode = mode
-                questRows[#questRows + 1] = row
-                y = y - 22
+                questRows[#questRows + 1] = { kind = "radio", text = QM.label[mode], tip = QM.tip[mode],
+                    on = function() return (db.blobMode or "dim") == mode end, click = function() SetQuestMode(mode) end }
             end
         end
-        ns.menuRefresh()
+        ns.FillMenu(questMenu, questRows)
         Beside(questMenu, questEntry)
         questMenu:Show()
     end)
@@ -2313,10 +2419,7 @@ local function CreateOptions(anchor)
     ShowCap(hzBtn)
     optMenu.hzBtn = hzBtn
     function ns.menuRefresh()
-        for _, row in ipairs(questRows) do
-            local on = (db.blobMode or "dim") == row.mode
-            row.text:SetText((on and "|cffffd100> |r" or "   ") .. QM.label[row.mode])
-        end
+        if questMenu and questMenu:IsShown() then ns.FillMenu(questMenu, questRows) end
     end
     Layout()
     ApplyAlpha()
@@ -2327,6 +2430,7 @@ end
 -- Lua allows a function only 60 upvalues, and CreateUI was at the limit)
 local function CreateTopLayers()
     pinsFrame = CreateFrame("Frame", nil, view)
+    ns.pinsFrame = pinsFrame
     pinsFrame:SetAllPoints(view)
     tcache.layer = CreateFrame("Frame", nil, view)
     ns.pinLayer = tcache.layer
@@ -2599,6 +2703,13 @@ local function CreateUI()
         if IsControlKeyDown() and ns.onCtrlClick and btn == "RightButton" then
             local cx, cy = CursorInView()
             Run(function() ns.onCtrlClick((cx - ox) / scale, (cy - oy) / scale, scale) end)
+        end
+        -- any click that was not a drag goes to the plugins first (Bridge.lua: CloudeMap.Map.OnClick)
+        if ns.onMapClick and not dragMoved and not (btn == "LeftButton" and d == nil) then
+            local cx, cy = CursorInView()
+            local done = ns.onMapClick(btn, (cx - ox) / scale, (cy - oy) / scale,
+                IsShiftKeyDown and IsShiftKeyDown() or false, IsControlKeyDown and IsControlKeyDown() or false, IsAltKeyDown and IsAltKeyDown() or false)
+            if done then return end
         end
         -- Alt+left click: a ping for the group (Bridge.lua), not after a drag
         if IsAltKeyDown and IsAltKeyDown() and ns.onAltClick and btn == "LeftButton" and not dragMoved then

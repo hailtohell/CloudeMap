@@ -1134,6 +1134,7 @@ function ns.afterUpdate(...)
         end
         return
     end
+    if B.PluginRedraw then T("pins: plugins", B.PluginRedraw, select(5, ...)) end
     T("pins: quest lists", pcall, ZoneLists, ...)
     if blobOK ~= false then
         local ok, err = T("pins: quest areas", pcall, DrawBlobs, ...)
@@ -1910,6 +1911,7 @@ function B.Status()
         .. ("party pins %d%s | "):format(#party.list, B.partyErr and (", error: " .. tostring(B.partyErr)) or "")
         .. ("pings: minimap pings %s, last %s%s | "):format(B.mmHooked and "heard" or "not available", tostring(B.mmLast or "none"),
             (B.pingErr and (", send error " .. tostring(B.pingErr)) or "") .. (B.blocked and (", blocked: " .. B.blocked) or ""))
+        .. (B.PluginStatus and B.PluginStatus() or "")
     return blobLine .. qs .. ("addon icons: Questie %s | pin libraries %s | HandyNotes %s%s"):format(
         B.questie == nil and "not seen" or (B.questie and "read" or "frames not available"),
         #names > 0 and table.concat(names, ", ") or "none found",
@@ -3991,72 +3993,128 @@ do
     B.mmHooked, B.OnMinimapPing = hooked, OnMinimapPing
 end
 
--- Options -> Pings: on/off, chat line, sound (each sound plays when picked)
-function ns.PingMenu(anchor)
+-- Options -> Pings: on/off, chat line, sound (each sound plays when picked). Built (and filled
+-- again) in the Options lists' common look (CloudeMap.lua: ns.FillMenu); the Options menu shows
+-- it beside its entry.
+function ns.PingMenu()
     local m = B.pingMenu
-    if m and m:IsShown() then m:Hide() return end
     if not m then
-        m = CreateFrame("Frame", nil, anchor:GetParent())
-        m:SetFrameStrata("DIALOG")
-        m:SetClampedToScreen(true)
-        m:EnableMouse(true)
-        local back = m:CreateTexture(nil, "BACKGROUND")
-        back:SetAllPoints()
-        back:SetColorTexture(0.06, 0.06, 0.07, 0.96)
-        m.rows = {}
+        m = ns.MenuPanel()
         B.pingMenu = m
     end
     local db = CloudeMapDB
-    local function onoff(v) return v and "|cff40d040on|r" or "|cff999999off|r" end
     local items = {
-        { text = function() return "Pings: " .. onoff(PingOn()) end, click = function() db.ping = (db.ping == false) and nil or false end,
-          tip = "Alt+click the map to ping a spot for your party or raid. Group members with CloudeMap see it on their map; when the spot is within your minimap, everyone sees it on their minimap too. Minimap pings from the group show on this map as well. Off: no pings sent or shown." },
-        { text = function() return "Chat line for pings: " .. onoff(db.pingChat == true) end, click = function() db.pingChat = (db.pingChat ~= true) or nil end,
-          tip = "A line in chat with who pinged where." },
-        { text = function() return "|cffffd100Sound|r" end },
-        { text = function() return (db.pingSound == 0 and "|cffffd100> |r" or "   ") .. "None" end, click = function() db.pingSound = 0 end },
+        { kind = "check", text = "Pings", on = PingOn, click = function() if db.ping == false then db.ping = nil else db.ping = false end end,
+          tip = "Alt+click the map to ping a spot for your party or raid. Group members with CloudeMap see it on their map, and the spot is placed on your own minimap. Off: no pings sent or shown." },
+        { kind = "check", text = "Chat line for pings", on = function() return db.pingChat == true end,
+          click = function() db.pingChat = (db.pingChat ~= true) or nil end, tip = "A line in chat with who pinged where." },
+        { kind = "head", text = "Sound" },
+        { kind = "radio", text = "None", on = function() return db.pingSound == 0 end, click = function() db.pingSound = 0 end },
     }
     for i, snd in ipairs(PING_SOUNDS) do
-        items[#items + 1] = {
-            text = function() return (((tonumber(db.pingSound) or 1) == i and db.pingSound ~= 0) and "|cffffd100> |r" or "   ") .. snd[1] end,
-            click = function() db.pingSound = i; if PlaySound then pcall(PlaySound, snd[2], "SFX") end end,
-        }
+        items[#items + 1] = { kind = "radio", text = snd[1],
+            on = function() return (tonumber(db.pingSound) or 1) == i and db.pingSound ~= 0 end,
+            click = function() db.pingSound = i; if PlaySound then pcall(PlaySound, snd[2], "SFX") end end }
     end
-    local RW, RH = 200, 18
-    for i, it in ipairs(items) do
-        local r = m.rows[i]
-        if not r then
-            r = CreateFrame("Button", nil, m)
-            r:SetSize(RW, RH)
-            local hl = r:CreateTexture(nil, "HIGHLIGHT")
-            hl:SetAllPoints()
-            hl:SetColorTexture(1, 1, 1, 0.15)
-            r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            r.text:SetPoint("LEFT", 6, 0)
-            r.text:SetJustifyH("LEFT")
-            r:SetScript("OnEnter", function(self)
-                if self.tip and GameTooltip then
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(self.tip, 1, 1, 1, 1, true)
-                    GameTooltip:Show()
-                end
-            end)
-            r:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-            m.rows[i] = r
-        end
-        r:SetPoint("TOPLEFT", m, "TOPLEFT", 4, -4 - (i - 1) * RH)
-        r.item, r.tip = it, it.tip
-        r.text:SetText(it.text())
-        r:SetScript("OnClick", it.click and function()
-            it.click()
-            for _, row in ipairs(m.rows) do if row:IsShown() and row.item then row.text:SetText(row.item.text()) end end
-        end or nil)
-        r:Show()
-    end
-    for i = #items + 1, #m.rows do m.rows[i]:Hide() end
-    m:SetSize(RW + 8, #items * RH + 8)
-    m:ClearAllPoints()
-    m:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+    ns.FillMenu(m, items)
     m:Show()
+    return m
 end
+end
+
+
+---------------------------------------------------------------------------
+-- Plugins: what a separate addon needs to draw on this map (CloudeMap_ShortestPath is one), as
+-- CloudeMap.Map. Pins go through the registry as for any addon (CloudeMap.RegisterCategory,
+-- SetPins); this adds the map itself. Positions on the canvas are CloudeMap's own units: a view
+-- point is ox + cx * scale, oy + cy * scale from the view's top left, y down.
+--   Map.version                          1
+--   Map.View()                           -> view, layer, scale, level: the map frame, the layer the
+--                                           pins ride on (moves with the map: anchor to its
+--                                           TOPLEFT at cx * scale, -cy * scale), the zoom, and the
+--                                           frame level just under the pins (nil until built)
+--   Map.ToCanvas(uiMapID, x, y)          -> cx, cy, mapID, x, y: a place (lifted onto a map
+--                                           CloudeMap draws when it is a cave or micro map)
+--   Map.WorldToCanvas(continent, wx, wy) -> the same, from a world position
+--   Map.MapAt(cx, cy)                    -> uiMapID, x, y: the zone or city at a canvas point
+--   Map.Hero()                           -> cx, cy of the player, or nil
+--   Map.OnRedraw(fn)                     fn(scale) after every full redraw (zoom, zone change)
+--   Map.OnClick(fn)                      fn(button, cx, cy, shift, ctrl, alt) on a click (not a
+--                                        drag); return true to say it was handled
+--   Map.OnToggle(fn)                     fn(categoryID, on) when a pin category is switched
+--   Map.Status(fn)                       fn() -> a line for /cmap status
+---------------------------------------------------------------------------
+do
+    local M = { version = 1 }
+    local redraw, clicks, toggles, status = {}, {}, {}, {}
+    B.plugins = { redraw = redraw, clicks = clicks, status = status }
+    local function Known(map, x, y)
+        for _ = 1, 6 do
+            if type(map) ~= "number" or type(x) ~= "number" or type(y) ~= "number" then return end
+            local n = ns.NodeOf and ns.NodeOf(map)
+            if n and n.w and n.w > 0 then return n.x + x * n.w, n.y + y * n.h, map, x, y end
+            local info = C_Map.GetMapInfo and C_Map.GetMapInfo(map)
+            local parent = info and info.parentMapID
+            if not parent or parent == 0 or not C_Map.GetMapRectOnMap then return end
+            local ok, x1, x2, y1, y2 = pcall(C_Map.GetMapRectOnMap, map, parent)
+            if not (ok and x1 and x2 and y1 and y2) then return end
+            map, x, y = parent, x1 + x * (x2 - x1), y1 + y * (y2 - y1)
+        end
+    end
+    M.ToCanvas = Known
+    function M.WorldToCanvas(c, wx, wy)
+        if not (C_Map.GetMapPosFromWorldPos and CreateVector2D) then return end
+        local ok, map, pos = pcall(C_Map.GetMapPosFromWorldPos, c, CreateVector2D(wx, wy))
+        if not (ok and map and pos) then return end
+        local px, py = pos.x, pos.y
+        if not px and pos.GetXY then px, py = pos:GetXY() end
+        if type(px) ~= "number" or Secret(px) then return end
+        return Known(map, px, py)
+    end
+    function M.MapAt(cx, cy)
+        local n = ns.PickAt and ns.PickAt(cx, cy)
+        if not (n and n.mapID and n.w and n.w > 0) then return end
+        local x, y = (cx - n.x) / n.w, (cy - n.y) / n.h
+        if x < 0 or x > 1 or y < 0 or y > 1 then return end
+        return n.mapID, x, y
+    end
+    function M.Hero()
+        if ns.HeroCanvas then
+            local x, y = ns.HeroCanvas()
+            return x, y
+        end
+    end
+    function M.View()
+        local v = B.viewState
+        if not (v and v.view and v.scale and ns.pinLayer) then return end
+        local pf = ns.pinsFrame
+        return v.view, ns.pinLayer, v.scale, pf and pf:GetFrameLevel() or (v.view:GetFrameLevel() + 5)
+    end
+    local function Add(list) return function(fn) if type(fn) == "function" then list[#list + 1] = fn end end end
+    M.OnRedraw, M.OnClick, M.OnToggle, M.Status = Add(redraw), Add(clicks), Add(toggles), Add(status)
+    P.Map = M                       -- (CloudeMap.Map: the public table reads the registry)
+
+    -- called by ns.afterUpdate and the map's clicks
+    function B.PluginRedraw(scale)
+        for _, fn in ipairs(redraw) do pcall(fn, scale) end
+    end
+    function ns.onMapClick(btn, cx, cy, shift, ctrl, alt)
+        for _, fn in ipairs(clicks) do
+            local ok, done = pcall(fn, btn, cx, cy, shift, ctrl, alt)
+            if ok and done then return true end
+        end
+    end
+    function B.PluginStatus()
+        local out = {}
+        for _, fn in ipairs(status) do
+            local ok, line = pcall(fn)
+            if ok and type(line) == "string" then out[#out + 1] = line .. " | " end
+        end
+        return table.concat(out)
+    end
+    local SetEnabled = P.SetEnabled
+    function P.SetEnabled(id, on)
+        SetEnabled(id, on)
+        for _, fn in ipairs(toggles) do pcall(fn, id, on) end
+    end
 end

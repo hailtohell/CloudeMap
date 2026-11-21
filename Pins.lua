@@ -10,6 +10,7 @@
 --       bulk     = true,                    -- hundreds at once (gathering nodes): drawn after every other category
 --       minScale = 0.3,                     -- map zoom (title bar) below which it is hidden
 --       size     = 18,                      -- icon size in screen pixels
+--       minSize  = 12,                      -- never smaller than this, however far out the map is zoomed
 --       atlas    = "...", texture = "...",  -- default icon, a pin can bring its own
 --       texCoord = { l, r, t, b },
 --       order    = 100,                     -- position in the menu (lower first)
@@ -120,7 +121,7 @@ function P.RegisterCategory(id, def)
         P.cats[id] = c
         P.order[#P.order + 1] = id
     end
-    for _, k in ipairs({ "name", "default", "minScale", "size", "atlas", "texture", "texCoord", "order", "color", "always", "noCount", "scaleKey", "addon", "bulk", "absolute" }) do
+    for _, k in ipairs({ "name", "default", "minScale", "size", "atlas", "texture", "texCoord", "order", "color", "always", "noCount", "scaleKey", "addon", "bulk", "absolute", "minSize" }) do
         if def[k] ~= nil then c[k] = def[k] end
     end
     SortOrder()

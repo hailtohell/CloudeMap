@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.19.9 · SavedVariables: CloudeMapDB
+Version 0.19.10 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -37,6 +37,8 @@ Version 0.19.9 · SavedVariables: CloudeMapDB
 - Level ranges coloured by faction: green yours, orange contested, red enemy.
 - Zoom level shown while zooming: x1 is the whole world, the wheel steps through round figures (x1.5, x2, x3 … x24, x32 …).
 - Toolbar: parchment/satellite, Follow, Options, plus Dungeon Journal and BG when available.
+- Options: sliders for opacity and pin sizes; Pins, Quest areas and Pings each open their own
+  list beside the menu with a click (one at a time, a second click closes it).
 - Minimap button to show/hide the map.
 
 ### You and your group
@@ -87,7 +89,10 @@ All of these are optional and detected automatically. Their pins are listed unde
 | **HereBeDragons-Pins** | World map icons from any addon that uses this library. |
 | **Other addons' map pins** | Waypoints set through the game's map pin show up too. |
 
-Other addons can add their own pin categories through `_G.CloudeMap`.
+Other addons can add their own pin categories through `_G.CloudeMap`, and plugins can draw on
+the map itself through `CloudeMap.Map` (map position, conversions, redraw, click and status
+callbacks; documented in Bridge.lua). Categories can set a minimum on-screen size so their pins
+stay visible zoomed right out.
 
 ## Slash commands
 
