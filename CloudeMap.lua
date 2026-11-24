@@ -1621,8 +1621,10 @@ end
 local function ApplyMarker()
     if not player then return end
     player:SetTexture(ARROW)
-    player:SetSize(MARK, MARK)
+    local k = db and db.heroSize or 1               -- (Options: Player marker size)
+    player:SetSize(MARK * k, MARK * k)
 end
+ns.ApplyMarker = ApplyMarker
 
 -- A zone's level range as " (10-20)", coloured as Carbonite does by whose land it is: green your
 -- faction's, orange shared, red the other faction's; "" when there is none (cities)
@@ -2209,8 +2211,11 @@ end
 -- list beside it (to the left: the menu hangs from the right end of the title bar).
 local function CreateOptions(anchor)
     local questMenu
+    -- the sliders (opacity and sizes): a list of their own, in the lists' common look
+    local sizeMenu = ns.MenuPanel()
     -- one list beside the menu at a time (keep: the one about to open)
     local function CloseSubs(keep)
+        if sizeMenu ~= keep then sizeMenu:Hide() end
         if pinMenu and pinMenu ~= keep then pinMenu:Hide() end
         if questMenu and questMenu ~= keep then questMenu:Hide() end
         local pm = ns.bridge and ns.bridge.pingMenu
@@ -2245,9 +2250,9 @@ local function CreateOptions(anchor)
 
     -- a labelled slider; set() stores the value, text() names it
     local function Slider(lo, hi, step, value, set, text)
-        local label = optMenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local label = sizeMenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         label:SetText(text(value))
-        local s = CreateFrame("Slider", nil, optMenu)
+        local s = CreateFrame("Slider", nil, sizeMenu)
         s:SetOrientation("HORIZONTAL")
         s:SetSize(180, 14)
         s.label = label
@@ -2271,15 +2276,19 @@ local function CreateOptions(anchor)
         return s
     end
     local items = {}                -- top to bottom; laid out whenever the menu opens
-    items[1] = Slider(0.2, 1, 0.05, db.alpha or 1,
+    local sliders = {}              -- the same for the sliders' list
+    sliders[1] = Slider(0.2, 1, 0.05, db.alpha or 1,
         function(v) db.alpha = v; ApplyAlpha() end,
         function(v) return ("Window opacity: %d%%"):format(floor(v * 100 + 0.5)) end)
-    items[2] = Slider(0.5, 2.5, 0.1, db.pinSize or 1,
+    sliders[2] = Slider(0.5, 2.5, 0.1, db.pinSize or 1,
         function(v) db.pinSize = v; dirty, tcache.pan = true, false end,
         function(v) return ("Pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
-    items[3] = Slider(0.5, 3, 0.1, db.partySize or 1,
+    sliders[3] = Slider(0.5, 3, 0.1, db.partySize or 1,
         function(v) db.partySize = v; dirty, tcache.pan = true, false end,
         function(v) return ("Party pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
+    sliders[4] = Slider(0.5, 3, 0.1, db.heroSize or 1,
+        function(v) db.heroSize = v ~= 1 and v or nil; ApplyMarker() end,
+        function(v) return ("Player marker size: %d%%"):format(floor(v * 100 + 0.5)) end)
     -- only with GatherMate2 around (it may load after the map was first opened: looked for at every opening)
     local gmSlider
     -- a list of an entry opens beside the menu: to the right if the screen has the room, else to the left
@@ -2299,7 +2308,7 @@ local function CreateOptions(anchor)
             gmSlider = Slider(0.1, 1, 0.05, clamp(db.gmSize or 1, 0.1, 1),
                 function(v) db.gmSize = v; dirty, tcache.pan = true, false end,
                 function(v) return ("GatherMate pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
-            table.insert(items, 4, gmSlider)
+            table.insert(sliders, gmSlider)
         end
         -- pings for the group: a menu of their own (Bridge.lua)
         if not optMenu.pingRow and ns.PingMenu then
@@ -2363,6 +2372,18 @@ local function CreateOptions(anchor)
         optMenu:SetHeight(-y + 4)
     end
     optMenu:SetScript("OnShow", Layout)
+    -- the sliders' list: a label over each slider
+    local function SizeLayout()
+        local y = -8
+        for _, it in ipairs(sliders) do
+            it.label:ClearAllPoints()
+            it.label:SetPoint("TOPLEFT", sizeMenu, "TOPLEFT", 12, y)
+            it:ClearAllPoints()
+            it:SetPoint("TOPLEFT", sizeMenu, "TOPLEFT", 12, y - 18)
+            y = y - 42
+        end
+        sizeMenu:SetSize(204, -y + 2)
+    end
 
 
     -- an entry with a list of its own, as Pings: a click opens it beside the entry and closes the
@@ -2375,6 +2396,14 @@ local function CreateOptions(anchor)
         return b
     end
 
+    local sizeEntry
+    sizeEntry = Entry("Size and opacity", function()
+        if sizeMenu:IsShown() then sizeMenu:Hide() return end
+        CloseSubs(sizeMenu)
+        SizeLayout()
+        sizeMenu:Show()
+        Beside(sizeMenu, sizeEntry)
+    end)
     pinsBtn = Entry("Pins", function()
         if pinMenu and pinMenu:IsShown() then pinMenu:Hide() return end
         CloseSubs(pinMenu)

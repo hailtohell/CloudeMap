@@ -1907,7 +1907,7 @@ function B.Status()
         type(_G.Spy) == "table" and "loaded" or "not loaded")
         .. (B.DungeonStatus and (B.DungeonStatus() .. " | ") or "")
         .. ("tracking menu: %s | "):format(B.trackingTypes and table.concat(B.trackingTypes, ", ") or "not read")
-        .. ("ley lines %d, convergences %d (%d learned by LeyLines)%s | "):format(B.leyCount or 0, B.convCount or 0, B.leyLearned or 0, B.leyErr and (", error: " .. tostring(B.leyErr)) or "")
+        .. ("ley lines %d, convergences %d (%d learned by LeyLines, %d unconfirmed)%s | "):format(B.leyCount or 0, B.convCount or 0, B.leyLearned or 0, B.leyUnconfirmed or 0, B.leyErr and (", error: " .. tostring(B.leyErr)) or "")
         .. ("party pins %d%s | "):format(#party.list, B.partyErr and (", error: " .. tostring(B.partyErr)) or "")
         .. ("pings: minimap pings %s, last %s%s | "):format(B.mmHooked and "heard" or "not available", tostring(B.mmLast or "none"),
             (B.pingErr and (", send error " .. tostring(B.pingErr)) or "") .. (B.blocked and (", blocked: " .. B.blocked) or ""))
@@ -3020,7 +3020,8 @@ do
             local x, y = XY(ok and pos or nil)
             st.hero = x and true or false
             if x then
-                local tex = Put(x, y, 30, 6)
+                local k = CloudeMapDB and CloudeMapDB.heroSize or 1     -- (Options: Player marker size)
+                local tex = Put(x, y, 30 * k, 6)
                 tex:SetTexture("Interface\\Minimap\\MinimapArrow")
                 local facing = GetPlayerFacing and Plain(GetPlayerFacing())
                 if type(facing) == "number" and tex.SetRotation then tex:SetRotation(facing) end
@@ -3399,7 +3400,20 @@ do
                 end
             end
         end
-        B.leyCount, B.convCount, B.leyLearned = #lists.L, #lists.V, learned
+        -- last, the places still waiting for review by LeyLines' maintainer (Leylines.lua): only
+        -- where nothing confirmed or learned in play is already known, and said to be unconfirmed
+        local unconfirmed = 0
+        for kind, maps in pairs(type(ns.LEYLINES_UNCONFIRMED) == "table" and ns.LEYLINES_UNCONFIRMED or {}) do
+            for map, xyr in pairs(maps) do
+                for i = 1, #xyr - 2, 3 do
+                    local r = tonumber(xyr[i + 2]) or 1
+                    local note = ("|cffff8040Unconfirmed|r: a player report to the LeyLines addon not yet reviewed (%d %s); may be off or missing")
+                        :format(r, r == 1 and "report" or "reports")
+                    if Add(kind, map, xyr[i], xyr[i + 1], note) then unconfirmed = unconfirmed + 1 end
+                end
+            end
+        end
+        B.leyCount, B.convCount, B.leyLearned, B.leyUnconfirmed = #lists.L, #lists.V, learned, unconfirmed
         P.SetPins(CAT.L, lists.L)
         P.SetPins(CAT.V, lists.V)
     end

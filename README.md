@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.19.10 · SavedVariables: CloudeMapDB
+Version 0.19.11 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -37,12 +37,13 @@ Version 0.19.10 · SavedVariables: CloudeMapDB
 - Level ranges coloured by faction: green yours, orange contested, red enemy.
 - Zoom level shown while zooming: x1 is the whole world, the wheel steps through round figures (x1.5, x2, x3 … x24, x32 …).
 - Toolbar: parchment/satellite, Follow, Options, plus Dungeon Journal and BG when available.
-- Options: sliders for opacity and pin sizes; Pins, Quest areas and Pings each open their own
-  list beside the menu with a click (one at a time, a second click closes it).
+- Options: Size and opacity (window opacity, pin, party pin, player marker and GatherMate pin
+  sizes), Pins, Quest areas and Pings each open their own list beside the menu with a click (one
+  at a time, a second click closes it).
 - Minimap button to show/hide the map.
 
 ### You and your group
-- Player arrow, always on top.
+- Player arrow, always on top, with its own size slider.
 - Follow mode keeps the map centred on you.
 - Party and raid members in class colours, the same size at every zoom (own size slider in Options).
 - Death marker at your corpse.
@@ -52,7 +53,9 @@ Version 0.19.10 · SavedVariables: CloudeMapDB
   anvils and forges, zone links.
 - The game's map pin: Ctrl+right click to set or remove.
 - Quest markers and quest areas (all quests with others dimmed, or tracked only).
-- Ley lines and elemental convergences for the Skyborne racial.
+- Ley lines and elemental convergences for the Skyborne racial. **Until further notice this includes
+  unverified places:** player reports to the LeyLines addon still waiting for its maintainer's
+  review, marked "Unconfirmed" in their tooltip (they may be off or missing).
 - Every category has its own toggle; one switch turns all pins off and back on.
 - Pin size adjustable.
 
