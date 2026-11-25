@@ -2510,11 +2510,25 @@ local function CreateOptions(anchor)
     -- a click anywhere else (the game world, another window) closes the menu and its lists. The
     -- game reports every mouse press while this listens, which is only while the menu is open.
     local watch = CreateFrame("Frame")
+    local function Ours(f)                          -- the menu, its button or one of its lists
+        return f and (f == optMenu or f == optBtn or f == sizeMenu or f == pinMenu
+            or f == questMenu or f == menuRows.panel)
+    end
     watch:SetScript("OnEvent", function()
         if not optMenu:IsShown() then return end
-        if optMenu:IsMouseOver() or optBtn:IsMouseOver() then return end      -- (the button toggles by itself)
-        for _, f in ipairs({ sizeMenu, pinMenu, questMenu, menuRows.panel }) do
-            if f and f:IsShown() and f:IsMouseOver() then return end
+        -- (lists not made yet are nil: check each by itself, not with ipairs, which stops at a nil)
+        local lists = { optMenu, optBtn, sizeMenu, pinMenu, questMenu, menuRows.panel }
+        for i = 1, 6 do
+            local f = lists[i]
+            if f and f:IsVisible() and f:IsMouseOver() then return end
+        end
+        -- the frame under the pointer, or one it sits in, belongs to the menu
+        local foci = GetMouseFoci and GetMouseFoci()
+        local f = foci and foci[1] or (GetMouseFocus and GetMouseFocus())
+        for _ = 1, 20 do
+            if not f or f == UIParent or f == WorldFrame then break end
+            if Ours(f) then return end
+            f = f.GetParent and f:GetParent()
         end
         optMenu:Hide()
     end)
