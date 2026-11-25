@@ -135,6 +135,7 @@ function P.SetPins(id, pins)
     if not c then c = P.RegisterCategory(id) end
     c.pins = type(pins) == "table" and pins or {}
     c.idx = nil
+    c.rev = (c.rev or 0) + 1        -- (CloudeMap.lua: only this category's pictures are set again)
     P.menuRev = P.menuRev + 1
     Changed()
 end

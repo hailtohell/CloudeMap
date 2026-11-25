@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.19.11 · SavedVariables: CloudeMapDB
+Version 0.20.0 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -28,18 +28,23 @@ Version 0.19.11 · SavedVariables: CloudeMapDB
 - Unexplored areas shown dimmed.
 
 ### Window
-- Move, resize, set opacity; position and size are remembered.
+- Move, resize, set opacity; position and size are remembered. Below full opacity the window is
+  drawn as one image and then made see-through, so the map's layers don't show through each other.
+- The map itself stops at the screen's edges; the thin bezel and the title bar may go past them.
 - Big window button (or double-click the title bar): switches between normal and big size, each
   remembering its own size and position. Big starts centred at about 88% of the screen.
-- Frame fades out when the pointer leaves, like Carbonite; map and text stay.
+- Frame fades out when the pointer leaves, like Carbonite; map and text stay (can be switched off).
+- Two looks: flat and dark, or **vanilla style** (the game's own border, buttons, menus and
+  sliders, drawn small to fit the window).
 - Title bar: your zone, its level range and your position.
 - Pointer readout: zone, level range, position and distance from you in yards.
 - Level ranges coloured by faction: green yours, orange contested, red enemy.
 - Zoom level shown while zooming: x1 is the whole world, the wheel steps through round figures (x1.5, x2, x3 … x24, x32 …).
 - Toolbar: parchment/satellite, Follow, Options, plus Dungeon Journal and BG when available.
-- Options: Size and opacity (window opacity, pin, party pin, player marker and GatherMate pin
-  sizes), Pins, Quest areas and Pings each open their own list beside the menu with a click (one
-  at a time, a second click closes it).
+- Options: **Looks** (window opacity, pin, party pin, player marker and GatherMate pin sizes,
+  vanilla style, frame fade), **Pins** and **Quest areas** each open their own list beside the
+  menu with a click (one at a time, a second click closes it), plus the update cap and Dungeon
+  Journal sync. A click anywhere else closes the menu.
 - Minimap button to show/hide the map.
 
 ### You and your group
@@ -60,13 +65,14 @@ Version 0.19.11 · SavedVariables: CloudeMapDB
 - Pin size adjustable.
 
 ### Group pings
-- Alt+click the map to ping a spot for your party or raid; group members with CloudeMap see it.
+- **Left Alt + left click** pings a spot for your party or raid; group members with CloudeMap see
+  it, with the map ping sound. **Left Alt + right click** also posts a chat line with who pinged
+  where.
 - Drawn like the minimap ping (the game's own ping pictures), at the minimap's size at any zoom.
 - A ping outside the part of the map in view shows at the window's edge, pointing towards it.
 - A ping within your minimap is also placed on your minimap. Minimap pings are not shown on this
   map: the game doesn't let addons listen for them.
-- Sound to choose (map ping by default, whisper, boss warning, ready check, raid warning, or none)
-  and an optional chat line, off by default, in Options -> Pings.
+- Pings have no settings. Known issue: with Chattynator installed, pings may not arrive.
 
 ### Battlegrounds
 - BG button appears inside a battleground and shows its map with landmarks and your team.
@@ -74,7 +80,11 @@ Version 0.19.11 · SavedVariables: CloudeMapDB
 ### Performance
 - Redraws only what changed; panning is cheap.
 - Large pin sets load over several frames.
-- Optional update cap (Options, clock button): 60 or 30 map updates per second.
+- Optional update cap (Options): 60 or 30 map updates per second.
+- Group members' pins move on their own without redrawing the map; reads of other addons that find
+  nothing new cost no redraw.
+- Self-contained: no other addon's or Blizzard's functions are hooked or changed; other addons are
+  only read.
 
 ## Addon compatibility
 
@@ -94,7 +104,7 @@ All of these are optional and detected automatically. Their pins are listed unde
 
 Other addons can add their own pin categories through `_G.CloudeMap`, and plugins can draw on
 the map itself through `CloudeMap.Map` (map position, conversions, redraw, click and status
-callbacks; documented in Bridge.lua). Categories can set a minimum on-screen size so their pins
+callbacks; documented in Plugins.lua). Categories can set a minimum on-screen size so their pins
 stay visible zoomed right out.
 
 ## Slash commands

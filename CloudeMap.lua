@@ -11,7 +11,7 @@ local MAX_MAP, MAX_SAT = 24, 14        -- zoom limit in map mode / satellite mod
 local TILE_YARDS = 533.33333333        -- one ADT / minimap tile
 local DEF_W, DEF_H = 520, 340          -- default window size (small)
 local MIN_W, MIN_H = 300, 200
-local BAR_H, PAD = 16, 4
+local BAR_H, PAD = 16, 2              -- title bar height; the frame round the map (its bezel)
 local MARK = 32                        -- player arrow size in pixels (Carbonite's default)
 local ARROW = "Interface\\Minimap\\MinimapArrow"     -- the stock minimap arrow, same as Carbonite
 
@@ -109,6 +109,7 @@ local function InitDB()
     -- settings of removed features (layers, fog brightness, base parchment, dot marker, quest
     -- area border width): dropped
     db.off, db.fog, db.base, db.dot, db.blobBorder = nil, nil, nil, nil, nil
+    db.ping, db.pingChat, db.pingSound = nil, nil, nil          -- (the Pings menu: pings now have no settings)
     if ns.pins then ns.pins.Init(db) end
     if db.mode ~= "map" and db.mode ~= "sat" then db.mode = "map" end
     if db.blobMode ~= "tracked" then db.blobMode = "dim" end
@@ -914,10 +915,104 @@ function ns.probe(say, px, py)
     end
 end
 
+-- the state of one pin pass, kept between passes (nothing is made anew on each redraw)
+tcache.ps = { used = 0 }
+-- the pins of one list, for UpdatePins (a function made once, not on every pass)
+function tcache.DrawPins(c, list, sz)
+    local ps, P = tcache.ps, ns.pins
+    local detail, city, zf = ps.detail, ps.city, ps.zf
+    for i = 1, #list do
+        local p = list[i]
+        local n = p.map and byMap[p.map]
+        local px, py = p.x, p.y
+        if n and px and py then
+            local show
+            if c.always then show = true
+            elseif n.level and n.level < 2 then
+                local owner
+                if n.level == 1 then
+                    if p.ownRev ~= P.rev then
+                        p.ownRev, p.owner = P.rev, ZoneAt(n.x + px * n.w, n.y + py * n.h) or false
+                    end
+                    owner = p.owner or nil
+                end
+                show = (detail == nil and city == nil) or (owner ~= nil and (owner == detail or owner == city))
+            else
+                show = (n == detail) or (n == city) or (db.mode ~= "sat" and (n.alpha or 0) * (n.zoomA or 0) > 0.5)
+            end
+            if not show then px = nil end
+        end
+        if n and px and py then
+            local sx = (n.x + px * n.w) * scale         -- on the layer (which moves with the map)
+            local sy = (n.y + py * n.h) * scale
+            local qx, qy = sx + ox, sy + oy             -- on screen: drawn within half a view round it
+            if qx > -VW * 0.5 - PIN_MARGIN and qx < VW * 1.5 + PIN_MARGIN and qy > -VH * 0.5 - PIN_MARGIN and qy < VH * 1.5 + PIN_MARGIN then
+                local used = ps.used + 1
+                ps.used = used
+                local b = pinBtns[used] or NewPinBtn(used)
+                -- (a button's picture is set again only when its pin, or that pin's category, changed)
+                if b.pin ~= p or b.cat ~= c or b.rev ~= c.rev then
+                    b.pin, b.cat, b.rev = p, c, c.rev
+                    SetPinIcon(b.icon, p, c)
+                    -- extra layers drawn on the pin (Bridge.lua: Dungeon Journal's X), and away again
+                    if (p.deco or b.decoOn) and ns.PinDeco then pcall(ns.PinDeco, b, p) end
+                    b.base = p.size or sz
+                    b:SetFrameLevel(pinsFrame:GetFrameLevel() + 1 + (p.level or 0))     -- (level: what lies on top)
+                    b.ax = nil
+                end
+                -- (a pin can size itself from how wide its zone is on screen: RareScanner's spots)
+                -- (absolute: the same size at every zoom, by its own slider only: party members)
+                local s = p.sizeFn and p.sizeFn(n.w * scale)
+                    or b.base * (c.absolute and 1 or zf) * (c.scaleKey and db[c.scaleKey] or 1)
+                -- (minSize: a floor on screen, so a category stays visible zoomed right out)
+                if c.minSize and s < c.minSize then s = c.minSize end
+                if b.sz ~= s then b.sz = s; b:SetSize(s, s) end
+                -- (a pin can sit a few pixels off its point, dx right / dy up: Spy's enemies, kept
+                -- clear of the hero's arrow they were seen from); anchored again only when it moved
+                local ax, ay = sx + (p.dx or 0), -sy + (p.dy or 0)
+                if b.ax ~= ax or b.ay ~= ay then
+                    b.ax, b.ay = ax, ay
+                    b:ClearAllPoints()
+                    b:SetPoint("CENTER", tcache.layer, "TOPLEFT", ax, ay)
+                end
+                b:Show()
+                if used >= MAX_PINS then return end
+            end
+        end
+    end
+end
+
+-- the pins of one category moved (party members): only their buttons are anchored again, no
+-- redraw. False when one of them has no button now (walked into view: a full pass is needed)
+function ns.MovePins(id)
+    local P = ns.pins
+    local c = P and P.cats[id]
+    if not (c and pinsFrame and tcache.layer and pinsShown) then return false end
+    local found = 0
+    for i = 1, pinsShown do
+        local b = pinBtns[i]
+        local p = b and b.cat == c and b.pin
+        if p then
+            found = found + 1
+            local n = p.map and byMap[p.map]
+            if n and p.x and p.y then
+                local ax, ay = (n.x + p.x * n.w) * scale + (p.dx or 0), -(n.y + p.y * n.h) * scale + (p.dy or 0)
+                if b.ax ~= ax or b.ay ~= ay then
+                    b.ax, b.ay = ax, ay
+                    b:ClearAllPoints()
+                    b:SetPoint("CENTER", tcache.layer, "TOPLEFT", ax, ay)
+                end
+            end
+        end
+    end
+    return found == #c.pins
+end
+
 local function UpdatePins()
     local P = ns.pins
     if not (P and pinsFrame) then return end
-    local used = 0
+    local ps = tcache.ps
+    ps.used = 0
     -- the zone in detail: the focus (map mode), or the zone in the middle of the view (satellite)
     local detail = focus
     if db.mode == "sat" then
@@ -930,80 +1025,33 @@ local function UpdatePins()
     if city and city.w * scale < CITY_PX0 then city = nil end
     -- icons grow with the map, as Carbonite's do: small when zoomed out, large up close
     -- in step with the zoom: at the start zoom (3.73) a pin has its own size, half the zoom half of it
-    local zf = clamp(scale / 3.73, 0.2, 4) * (db.pinSize or 1)
+    ps.detail, ps.city, ps.zf = detail, city, clamp(scale / 3.73, 0.2, 4) * (db.pinSize or 1)
     -- the maps whose pins can show now: the world and the continents, the zone and city in
     -- detail, and (map mode) every zone or city drawn in detail; pins of other maps are not looked at
     local maps, seen = tcache.pinMaps or {}, tcache.pinSeen or {}
     tcache.pinMaps, tcache.pinSeen = maps, seen
     for i = #maps, 1, -1 do maps[i] = nil end
     for k in pairs(seen) do seen[k] = nil end
-    local function AddMap(n) if n and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end end
-    for _, n in ipairs(nodes) do if n.level < 2 then AddMap(n) end end
-    AddMap(detail); AddMap(city)
-    if db.mode ~= "sat" then
-        for _, n in ipairs(zoneList) do if (n.alpha or 0) * (n.zoomA or 0) > 0.5 then AddMap(n) end end
-        for _, n in ipairs(cityList) do if (n.alpha or 0) * (n.zoomA or 0) > 0.5 then AddMap(n) end end
+    for _, n in ipairs(nodes) do
+        if n.level < 2 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
     end
-    local function Draw(c, list, sz)
-        for i = 1, #list do
-            local p = list[i]
-            local n = p.map and byMap[p.map]
-            local px, py = p.x, p.y
-            if n and px and py then
-                local show
-                if c.always then show = true
-                elseif n.level and n.level < 2 then
-                    local owner
-                    if n.level == 1 then
-                        if p.ownRev ~= P.rev then
-                            p.ownRev, p.owner = P.rev, ZoneAt(n.x + px * n.w, n.y + py * n.h) or false
-                        end
-                        owner = p.owner or nil
-                    end
-                    show = (detail == nil and city == nil) or (owner ~= nil and (owner == detail or owner == city))
-                else
-                    show = (n == detail) or (n == city) or (db.mode ~= "sat" and (n.alpha or 0) * (n.zoomA or 0) > 0.5)
-                end
-                if not show then px = nil end
-            end
-            if n and px and py then
-                local sx = (n.x + px * n.w) * scale         -- on the layer (which moves with the map)
-                local sy = (n.y + py * n.h) * scale
-                local qx, qy = sx + ox, sy + oy             -- on screen: drawn within half a view round it
-                if qx > -VW * 0.5 - PIN_MARGIN and qx < VW * 1.5 + PIN_MARGIN and qy > -VH * 0.5 - PIN_MARGIN and qy < VH * 1.5 + PIN_MARGIN then
-                    used = used + 1
-                    local b = pinBtns[used] or NewPinBtn(used)
-                    if b.pin ~= p or b.rev ~= P.rev then
-                        b.pin, b.cat, b.rev = p, c, P.rev
-                        SetPinIcon(b.icon, p, c)
-                        -- extra layers drawn on the pin (Bridge.lua: Dungeon Journal's X), and away again
-                        if (p.deco or b.decoOn) and ns.PinDeco then pcall(ns.PinDeco, b, p) end
-                        b.base = p.size or sz
-                        b:SetFrameLevel(pinsFrame:GetFrameLevel() + 1 + (p.level or 0))     -- (level: what lies on top)
-                    end
-                    -- (a pin can size itself from how wide its zone is on screen: RareScanner's spots)
-                    -- (absolute: the same size at every zoom, by its own slider only: party members)
-                    local s = p.sizeFn and p.sizeFn(n.w * scale)
-                        or b.base * (c.absolute and 1 or zf) * (c.scaleKey and db[c.scaleKey] or 1)
-                    -- (minSize: a floor on screen, so a category stays visible zoomed right out)
-                    if c.minSize and s < c.minSize then s = c.minSize end
-                    if b.sz ~= s then b.sz = s; b:SetSize(s, s) end
-                    b:ClearAllPoints()
-                    -- (a pin can sit a few pixels off its point, dx right / dy up: Spy's enemies, kept
-                    -- clear of the hero's arrow they were seen from)
-                    b:SetPoint("CENTER", tcache.layer, "TOPLEFT", sx + (p.dx or 0), -sy + (p.dy or 0))
-                    b:Show()
-                    if used >= MAX_PINS then return end
-                end
-            end
+    if detail and not seen[detail.mapID] then seen[detail.mapID] = true; maps[#maps + 1] = detail.mapID end
+    if city and not seen[city.mapID] then seen[city.mapID] = true; maps[#maps + 1] = city.mapID end
+    if db.mode ~= "sat" then
+        for _, n in ipairs(zoneList) do
+            if (n.alpha or 0) * (n.zoomA or 0) > 0.5 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
+        end
+        for _, n in ipairs(cityList) do
+            if (n.alpha or 0) * (n.zoomA or 0) > 0.5 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
         end
     end
+    local Draw = tcache.DrawPins
     -- two passes: every category first, then the bulk ones (gathering nodes, hundreds at once), so
     -- that if the limit is reached it is the bulk that runs short, never a rare or a quest
     for pass = 1, 2 do
     for _, id in ipairs(P.order) do
         local c = P.cats[id]
-        if c and used < MAX_PINS and (c.bulk and 2 or 1) == pass and scale >= (c.minScale or 0) and P.IsEnabled(id) then
+        if c and ps.used < MAX_PINS and (c.bulk and 2 or 1) == pass and scale >= (c.minScale or 0) and P.IsEnabled(id) then
             local sz = c.size or 18
             if c.always then
                 Draw(c, c.pins, sz)             -- (few, and they move between maps: all of them)
@@ -1011,12 +1059,13 @@ local function UpdatePins()
                 local idx = P.ByMap(c)
                 for _, m in ipairs(maps) do
                     local list = idx[m]
-                    if list and used < MAX_PINS then Draw(c, list, sz) end
+                    if list and ps.used < MAX_PINS then Draw(c, list, sz) end
                 end
             end
         end
     end
     end
+    local used = ps.used
     for i = used + 1, pinsShown do
         local b = pinBtns[i]
         if b then b:Hide(); b.pin = nil end
@@ -1089,7 +1138,9 @@ local function Update()
     end
     local mx, my = (vx2 - vx1) * 0.5, (vy2 - vy1) * 0.5
     vx1, vy1, vx2, vy2 = vx1 - mx, vy1 - my, vx2 + mx, vy2 + my
-    tcache.cull = { vx1, vy1, vx2, vy2, s = scale, mode = db.mode }
+    local cull = tcache.cull or {}
+    tcache.cull = cull
+    cull[1], cull[2], cull[3], cull[4], cull.s, cull.mode = vx1, vy1, vx2, vy2, scale, db.mode
     T("draw: base tiles", UpdateList, lists.base, vx1, vy1, vx2, vy2)
     T("draw: zone tiles", UpdateList, lists.zone, vx1, vy1, vx2, vy2)
     T("draw: overlay pieces", UpdateList, lists.over, vx1, vy1, vx2, vy2)
@@ -1696,6 +1747,8 @@ ns.PickAt = function(px, py) return tcache.PickAt(px, py) end
 -- a zone's node by its map ID (pings from the group are sent by map and position in it)
 ns.NodeOf = function(mapID) return byMap[mapID] end
 -- the hero on the canvas and the yards in one canvas unit of the hero's continent (minimap pings)
+-- the map the hero is on (a zone or city CloudeMap draws), or nil
+ns.HeroMap = function() return plNode and plNode.mapID end
 ns.HeroCanvas = function()
     if not (plX and plNode) then return end
     local cn = plNode
@@ -1849,6 +1902,52 @@ local function OnResize(w, h)
     Apply()
 end
 
+---------------------------------------------------------------------------
+-- Looks (Options -> Looks -> Vanilla style): the window, its menus, buttons and sliders either
+-- flat and dark, or in the game's vanilla style, its own artwork drawn small enough for the
+-- window. Each piece registers how it looks both ways (ns.Skin); switching calls them all again.
+---------------------------------------------------------------------------
+ns.skins = {}
+function ns.Vanilla() return db and db.vanilla == true end
+function ns.Skin(fn)
+    ns.skins[#ns.skins + 1] = fn
+    pcall(fn, ns.Vanilla())
+end
+function ns.ApplyLooks()
+    local v = ns.Vanilla()
+    for _, fn in ipairs(ns.skins) do pcall(fn, v) end
+    if ns.Relayout then ns.Relayout() end
+end
+-- the art of the vanilla pieces (all of it the game's own)
+local VANILLA = {
+    menu = { bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+             tile = true, tileSize = 16, edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } },
+    window = { edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 8, insets = { left = 0, right = 0, top = 0, bottom = 0 } },
+    slider = { bgFile = "Interface\\Buttons\\UI-SliderBar-Background", edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
+               tile = true, tileSize = 8, edgeSize = 8, insets = { left = 3, right = 3, top = 6, bottom = 6 } },
+}
+ns.VANILLA = VANILLA
+-- a vanilla backdrop laid on a frame (shown only in vanilla style), under its rows
+function ns.VanillaBackdrop(f, kind, level)
+    local b = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    b:SetAllPoints()
+    b:SetFrameLevel(level or f:GetFrameLevel())
+    b:EnableMouse(false)
+    if b.SetBackdrop then
+        b:SetBackdrop(VANILLA[kind])
+        if kind == "menu" then b:SetBackdropBorderColor(0.8, 0.8, 0.8, 1) end
+    end
+    b:Hide()
+    return b
+end
+-- a menu panel's background, either way: the flat one (bg) or the vanilla backdrop
+function ns.SkinPanel(f, bg)
+    local vb = ns.VanillaBackdrop(f, "menu")
+    ns.Skin(function(v)
+        if v then bg:Hide(); vb:Show() else vb:Hide(); bg:Show() end
+    end)
+end
+
 -- A text button (menu rows), or with `icon` a square icon button for the toolbar inside the map.
 -- An icon button has SetOn(bool): lit and gold-edged, or grey.
 local function MakeButton(parent, text, w, onClick, tip, icon)
@@ -1877,6 +1976,22 @@ local function MakeButton(parent, text, w, onClick, tip, icon)
             base = on and { 1, 0.82, 0, 0.9 } or { 0, 0, 0, 0.6 }
             bg:SetColorTexture(base[1], base[2], base[3], base[4])
         end
+    end
+    if not icon then
+        -- vanilla style: the game's red panel button (its normal, pressed and lit pictures)
+        local ART = "Interface\\Buttons\\UI-Panel-Button-"
+        local up, down, lit = b:CreateTexture(nil, "BACKGROUND"), b:CreateTexture(nil, "BACKGROUND"), b:CreateTexture(nil, "HIGHLIGHT")
+        for t, f in pairs({ [up] = "Up", [down] = "Down", [lit] = "Highlight" }) do
+            t:SetAllPoints(); t:SetTexture(ART .. f); t:SetTexCoord(0, 0.625, 0, 0.6875)
+        end
+        lit:SetBlendMode("ADD")
+        down:Hide()
+        b:SetScript("OnMouseDown", function() if ns.Vanilla() then down:Show(); up:Hide() end end)
+        b:SetScript("OnMouseUp", function() down:Hide(); if ns.Vanilla() then up:Show() end end)
+        ns.Skin(function(v)
+            bg:SetShown(not v); up:SetShown(v); down:Hide(); lit:SetShown(v)
+            fs:SetFontObject(v and "GameFontNormalSmall" or "GameFontHighlightSmall")
+        end)
     end
     b:SetScript("OnClick", function() Run(onClick) end)
     b:SetScript("OnEnter", function()
@@ -1934,13 +2049,21 @@ end
 -- unticked grey. ns.MenuPanel() makes the panel, ns.FillMenu(panel, items) lays out its rows:
 --   { kind = "check" | "radio" | "head", text = string or fn, on = fn, click = fn, tip = string or fn }
 ---------------------------------------------------------------------------
+-- A menu beside the window: not a child of the window (the window is drawn as one picture below
+-- full opacity, ApplyAlpha, and a child reaching out of it would be cut off), but hidden with it
+ns.detached = {}
+function ns.Detach(f)
+    ns.detached[#ns.detached + 1] = f
+    return f
+end
 function ns.MenuPanel()
-    local f = CreateFrame("Frame", nil, frame)
+    local f = ns.Detach(CreateFrame("Frame", nil, UIParent))
     f:SetFrameStrata("DIALOG")
     if f.SetIgnoreParentAlpha then f:SetIgnoreParentAlpha(true) end     -- the menus stay readable
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+    ns.SkinPanel(f, bg)
     f:EnableMouse(true)
     f:SetClampedToScreen(true)                      -- a list never runs off the screen
     f:Hide()
@@ -2146,6 +2269,7 @@ local function RefreshMenu()
         local bg = sub:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
         bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+        ns.SkinPanel(sub, bg)
         sub:Hide()
         menuRows.panel = sub
     end
@@ -2182,7 +2306,7 @@ end
 
 local function TogglePinMenu()
     if not pinMenu then
-        pinMenu = CreateFrame("Frame", nil, frame)
+        pinMenu = ns.Detach(CreateFrame("Frame", nil, UIParent))
         pinMenu:SetFrameStrata("DIALOG")
         pinMenu:SetPoint("TOPRIGHT", view, "TOPRIGHT", -2, -2)        -- (its Options entry puts it beside itself)
         if pinMenu.SetIgnoreParentAlpha then pinMenu:SetIgnoreParentAlpha(true) end
@@ -2190,6 +2314,7 @@ local function TogglePinMenu()
         local bg = pinMenu:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
         bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+        ns.SkinPanel(pinMenu, bg)
         pinMenu:EnableMouse(true)
         pinMenu:Hide()
     end
@@ -2204,8 +2329,25 @@ end
 -- Options: a drop-down like the Pins list, holding the window's transparency, the Pins list and
 -- the quest area mode
 local optMenu
+-- Window opacity: below full opacity the window is first drawn as one opaque picture (a frame
+-- buffer) and that picture is made see-through as a whole, so the map's layers (base, zone art,
+-- overlays, pins) do not show through one another. At full opacity the buffer is off (it costs
+-- a little drawing time).
 local function ApplyAlpha()
-    if frame then frame:SetAlpha(clamp(db.alpha or 1, 0.2, 1)) end
+    if not frame then return end
+    local a = clamp(db.alpha or 1, 0.2, 1)
+    local fb = a < 1 and frame.SetIsFrameBuffer and frame.SetFlattensRenderLayers and true or false
+    if tcache.fb ~= fb then
+        tcache.fb = fb
+        if fb then
+            pcall(frame.SetFlattensRenderLayers, frame, true)
+            pcall(frame.SetIsFrameBuffer, frame, true)
+        else
+            if frame.SetIsFrameBuffer then pcall(frame.SetIsFrameBuffer, frame, false) end
+            if frame.SetFlattensRenderLayers then pcall(frame.SetFlattensRenderLayers, frame, false) end
+        end
+    end
+    frame:SetAlpha(a)
 end
 -- A context menu: the Options list, and every entry of it that has more to choose opens its own
 -- list beside it (to the left: the menu hangs from the right end of the title bar).
@@ -2218,8 +2360,6 @@ local function CreateOptions(anchor)
         if sizeMenu ~= keep then sizeMenu:Hide() end
         if pinMenu and pinMenu ~= keep then pinMenu:Hide() end
         if questMenu and questMenu ~= keep then questMenu:Hide() end
-        local pm = ns.bridge and ns.bridge.pingMenu
-        if pm and pm ~= keep then pm:Hide() end
     end
     local optBtn = MakeButton(anchor, "Options", 52, function()
         if optMenu:IsShown() then
@@ -2231,13 +2371,14 @@ local function CreateOptions(anchor)
     end, "Options: transparency, pins and quest areas", "Interface\\Icons\\Trade_Engineering")
 
     local function Panel(w, h)
-        local f = CreateFrame("Frame", nil, frame)
+        local f = ns.Detach(CreateFrame("Frame", nil, UIParent))
         f:SetFrameStrata("DIALOG")
         f:SetSize(w, h)
         if f.SetIgnoreParentAlpha then f:SetIgnoreParentAlpha(true) end     -- the menus stay readable
         local bg = f:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
         bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)
+        ns.SkinPanel(f, bg)
         f:EnableMouse(true)
         f:SetClampedToScreen(true)                  -- a list never runs off the screen
         f:Hide()
@@ -2260,9 +2401,21 @@ local function CreateOptions(anchor)
         track:SetPoint("LEFT"); track:SetPoint("RIGHT"); track:SetHeight(4)
         track:SetColorTexture(1, 1, 1, 0.2)
         local thumb = s:CreateTexture(nil, "ARTWORK")
-        thumb:SetSize(10, 14)
-        thumb:SetColorTexture(1, 0.82, 0, 1)
         s:SetThumbTexture(thumb)
+        -- vanilla style: the game's slider bar and its knob
+        local vb = ns.VanillaBackdrop(s, "slider", s:GetFrameLevel())
+        ns.Skin(function(v)
+            s:SetHeight(v and 17 or 14)
+            track:SetShown(not v); vb:SetShown(v)
+            if v then
+                thumb:SetTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+                thumb:SetTexCoord(0, 1, 0, 1)
+                thumb:SetSize(32, 32)
+            else
+                thumb:SetColorTexture(1, 0.82, 0, 1)
+                thumb:SetSize(10, 14)
+            end
+        end)
         s:SetMinMaxValues(lo, hi)
         s:SetValueStep(step)
         if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
@@ -2310,27 +2463,12 @@ local function CreateOptions(anchor)
                 function(v) return ("GatherMate pin size: %d%%"):format(floor(v * 100 + 0.5)) end)
             table.insert(sliders, gmSlider)
         end
-        -- pings for the group: a menu of their own (Bridge.lua)
-        if not optMenu.pingRow and ns.PingMenu then
-            local row
-            row = MakeButton(optMenu, "Pings   >", 180, function()
-                local pm = ns.bridge and ns.bridge.pingMenu
-                if pm and pm:IsShown() then pm:Hide() return end
-                CloseSubs(pm)
-                Beside(ns.PingMenu(), row)
-            end,
-                "Pings for your party or raid: Alt+click the map. Turn them on or off, the chat line and the sound.")
-            row.text:ClearAllPoints()
-            row.text:SetPoint("LEFT", 6, 0)
-            row.full = true
-            optMenu.pingRow = row
-            items[#items + 1] = row
-        end
         -- only with the Dungeon Journal around: whether its window and ours follow each other
         if not optMenu.djRow and type(_G.ForeverDungeonJournal_NS) == "table" then
             local row = MakeButton(optMenu, "", 180, function()
                 if db.djSync == false then db.djSync = nil else db.djSync = false end
                 optMenu.djRow.Show_()
+                Layout()
             end, function()
                 return "Dungeon Journal sync: " .. (db.djSync == false and "off" or "on")
                     .. ".\nOn: a dungeon or floor picked in the journal's map is shown in CloudeMap's, and one picked here is shown in the journal."
@@ -2346,33 +2484,53 @@ local function CreateOptions(anchor)
             optMenu.djRow = row
             items[#items + 1] = row
         end
-        local y = -8
-        local firstEntry
+        -- one column of rows the same width: the entries that open a list first (Looks,
+        -- Pins, Quest areas, Pings), then the switches (update cap, Dungeon Journal sync)
+        -- the rows as wide as the longest text needs, the menu as wide as the rows
+        local widest = 0
         for _, it in ipairs(items) do
-            it:ClearAllPoints()
-            if rawget(it, "full") then
-                it:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y)
-                y = y - 24
-            elseif rawget(it, "label") then
-                it.label:ClearAllPoints()
-                it.label:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y)
-                it:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y - 18)
-                y = y - 42
-            else
-                -- the entries (Pins, Quest areas) sit right of the 60 Hz square, which spans both
-                firstEntry = firstEntry or y
-                it:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10 + 48, y)
-                y = y - 24
-            end
+            if it.text then widest = max(widest, it.text:GetStringWidth() or 0) end
         end
-        if firstEntry and optMenu.hzBtn then
-            optMenu.hzBtn:ClearAllPoints()
-            optMenu.hzBtn:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, firstEntry)
+        widest = floor(widest + 16 + 0.5)
+        for _, it in ipairs(items) do it:SetWidth(widest) end
+        optMenu:SetWidth(widest + 20)
+        local y = -8
+        for pass = 1, 2 do
+            for _, it in ipairs(items) do
+                if (pass == 1) == (rawget(it, "list") == true) then
+                    it:ClearAllPoints()
+                    it:SetPoint("TOPLEFT", optMenu, "TOPLEFT", 10, y)
+                    y = y - 24
+                end
+            end
         end
         optMenu:SetHeight(-y + 4)
     end
     optMenu:SetScript("OnShow", Layout)
+    -- a click anywhere else (the game world, another window) closes the menu and its lists. The
+    -- game reports every mouse press while this listens, which is only while the menu is open.
+    local watch = CreateFrame("Frame")
+    watch:SetScript("OnEvent", function()
+        if not optMenu:IsShown() then return end
+        if optMenu:IsMouseOver() or optBtn:IsMouseOver() then return end      -- (the button toggles by itself)
+        for _, f in ipairs({ sizeMenu, pinMenu, questMenu, menuRows.panel }) do
+            if f and f:IsShown() and f:IsMouseOver() then return end
+        end
+        optMenu:Hide()
+    end)
+    optMenu:HookScript("OnShow", function() pcall(watch.RegisterEvent, watch, "GLOBAL_MOUSE_DOWN") end)
+    optMenu:HookScript("OnHide", function() watch:UnregisterAllEvents() end)
+    optMenu.Layout = Layout
     -- the sliders' list: a label over each slider
+    -- the switches under the sliders, in the lists' common look (ns.FillMenu)
+    local switches = CreateFrame("Frame", nil, sizeMenu)
+    switches.rows = {}
+    local switchItems = {
+        { kind = "check", text = "Vanilla style", on = function() return db.vanilla == true end,
+          click = function() db.vanilla = (db.vanilla ~= true) or nil; ns.ApplyLooks() end },
+        { kind = "check", text = "Fade the frame when the pointer leaves", on = function() return not db.noFade end,
+          click = function() db.noFade = (db.noFade ~= true) or nil end },
+    }
     local function SizeLayout()
         local y = -8
         for _, it in ipairs(sliders) do
@@ -2382,22 +2540,28 @@ local function CreateOptions(anchor)
             it:SetPoint("TOPLEFT", sizeMenu, "TOPLEFT", 12, y - 18)
             y = y - 42
         end
-        sizeMenu:SetSize(204, -y + 2)
+        ns.FillMenu(switches, switchItems)
+        switches:ClearAllPoints()
+        switches:SetPoint("TOPLEFT", sizeMenu, "TOPLEFT", 0, y + 4)
+        local w = max(204, switches:GetWidth())
+        switches:SetWidth(w)
+        sizeMenu:SetSize(w, -y + switches:GetHeight() - 2)
     end
 
 
     -- an entry with a list of its own, as Pings: a click opens it beside the entry and closes the
     -- others, a second click closes it
     local function Entry(text, open)
-        local b = MakeButton(optMenu, text .. "   >", 180 - 48, open)
+        local b = MakeButton(optMenu, text .. "   >", 180, open)
         b.text:ClearAllPoints()
         b.text:SetPoint("LEFT", 6, 0)
+        b.full, b.list = true, true
         items[#items + 1] = b
         return b
     end
 
     local sizeEntry
-    sizeEntry = Entry("Size and opacity", function()
+    sizeEntry = Entry("Looks", function()
         if sizeMenu:IsShown() then sizeMenu:Hide() return end
         CloseSubs(sizeMenu)
         SizeLayout()
@@ -2427,26 +2591,26 @@ local function CreateOptions(anchor)
         Beside(questMenu, questEntry)
         questMenu:Show()
     end)
-    -- 60 Hz mode: a square left of the two entries, as tall as both
-    -- the update cap: off, 60 or 30 times a second; each click moves to the next
+    -- the update cap: off, 60 or 30 times a second; each click moves to the next (a switch row,
+    -- worded as the Dungeon Journal sync one)
     local function ShowCap(b)
-        b.text:SetText(db.cap and (db.cap .. " Hz") or "Off")
-        if b.SetOn then b.SetOn(db.cap ~= nil) end
+        b.text:SetText("Update cap: " .. (db.cap and ("|cff40d040" .. db.cap .. " Hz|r") or "|cff999999off|r"))
     end
-    local hzBtn = MakeButton(optMenu, "", 42, function()
+    local hzBtn = MakeButton(optMenu, "", 180, function()
         db.cap = (db.cap == nil and 60) or (db.cap == 60 and 30) or nil
         ShowCap(optMenu.hzBtn)
+        optMenu.Layout()                -- (the text's length changed)
     end, function()
         local now = db.cap and ("on, at most %d times a second"):format(db.cap) or "off, every frame"
         return "Map update cap: " .. now .. ".\nClick: " .. (db.cap == nil and "60 Hz" or db.cap == 60 and "30 Hz" or "off")
             .. ".\nLess work at high frame rates; 30 Hz is the lightest, with slightly less smooth movement."
-    end, "Interface\\Icons\\INV_Misc_PocketWatch_01")
-    hzBtn:SetSize(42, 42)
+    end)
     hzBtn.text:ClearAllPoints()
-    hzBtn.text:SetPoint("BOTTOM", 0, 3)
-    hzBtn.text:SetFontObject("GameFontHighlightSmall")
+    hzBtn.text:SetPoint("LEFT", 6, 0)
+    hzBtn.full = true
     ShowCap(hzBtn)
     optMenu.hzBtn = hzBtn
+    items[#items + 1] = hzBtn
     function ns.menuRefresh()
         if questMenu and questMenu:IsShown() then ns.FillMenu(questMenu, questRows) end
     end
@@ -2492,18 +2656,41 @@ end
 -- window is being moved or resized.
 function ns.ChromeFade(frame, bar, barBg, close, grip, tools, bigBtn)
     local parts = { barBg }
-    -- a strip from a point of the frame (its top left corner) to another (its bottom right corner)
-    local function Edge(p1, x1, y1, p2, x2, y2)
+    -- the strips round the map (placed again when the bezel changes width: ns.PlaceEdges)
+    local edges = {}
+    for i = 1, 4 do
         local t = frame:CreateTexture(nil, "BACKGROUND")
-        t:SetPoint("TOPLEFT", frame, p1, x1, y1)
-        t:SetPoint("BOTTOMRIGHT", frame, p2, x2, y2)
         t:SetColorTexture(0.04, 0.04, 0.05, 0.92)
+        edges[i] = t
         parts[#parts + 1] = t
     end
-    Edge("TOPLEFT", 0, -BAR_H, "BOTTOMLEFT", PAD, 0)                    -- left
-    Edge("TOPRIGHT", -PAD, -BAR_H, "BOTTOMRIGHT", 0, 0)                 -- right
-    Edge("BOTTOMLEFT", PAD, PAD, "BOTTOMRIGHT", -PAD, 0)                -- bottom
-    Edge("TOPLEFT", PAD, -BAR_H, "TOPRIGHT", -PAD, -(BAR_H + PAD))      -- between the bar and the map
+    local function Edge(t, p1, x1, y1, p2, x2, y2)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", frame, p1, x1, y1)
+        t:SetPoint("BOTTOMRIGHT", frame, p2, x2, y2)
+    end
+    function ns.PlaceEdges()
+        Edge(edges[1], "TOPLEFT", 0, -BAR_H, "BOTTOMLEFT", PAD, 0)                    -- left
+        Edge(edges[2], "TOPRIGHT", -PAD, -BAR_H, "BOTTOMRIGHT", 0, 0)                 -- right
+        Edge(edges[3], "BOTTOMLEFT", PAD, PAD, "BOTTOMRIGHT", -PAD, 0)                -- bottom
+        Edge(edges[4], "TOPLEFT", PAD, -BAR_H, "TOPRIGHT", -PAD, -(BAR_H + PAD))      -- between the bar and the map
+    end
+    ns.PlaceEdges()
+    -- vanilla style: the game's dialog border round the whole window, drawn small, over the bezel
+    local border = ns.VanillaBackdrop(frame, "window", frame:GetFrameLevel() + 30)
+    border:SetPoint("TOPLEFT", -1, 1); border:SetPoint("BOTTOMRIGHT", 1, -1)
+    parts[#parts + 1] = border
+    ns.Skin(function(v)
+        border:SetShown(v)
+        if v then
+            barBg:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark", "REPEAT", "REPEAT")
+            barBg:SetHorizTile(true); barBg:SetVertTile(true)
+            for _, t in ipairs(edges) do t:SetColorTexture(0.03, 0.025, 0.02, 1) end
+        else
+            barBg:SetColorTexture(0.12, 0.12, 0.14, 1)
+            for _, t in ipairs(edges) do t:SetColorTexture(0.04, 0.04, 0.05, 0.92) end
+        end
+    end)
     for _, f in ipairs({ close, grip, tools, bigBtn }) do parts[#parts + 1] = f end
     local busy, a, away = false, 1, 0
     local function Busy() busy = true end
@@ -2512,7 +2699,8 @@ function ns.ChromeFade(frame, bar, barBg, close, grip, tools, bigBtn)
     grip:HookScript("OnMouseDown", Busy); grip:HookScript("OnMouseUp", Free)
     local fader = CreateFrame("Frame", nil, frame)
     fader:SetScript("OnUpdate", function(_, dt)
-        local want = busy or frame:IsMouseOver() or (optMenu and optMenu:IsShown())
+        -- (Options -> Looks -> Fade the frame, off: it stays as it is)
+        local want = db.noFade or busy or frame:IsMouseOver() or (optMenu and optMenu:IsShown())
         if want then
             away = 0
             if a >= 1 then return end
@@ -2527,6 +2715,7 @@ function ns.ChromeFade(frame, bar, barBg, close, grip, tools, bigBtn)
 end
 
 local function CreateUI()
+    PAD = ns.Vanilla() and 4 or 2           -- (the bezel: wider in vanilla style, room for its border)
     frame = CreateFrame("Frame", nil, UIParent)
     _G.CloudeMapFrame = frame
     frame:SetSize(db.w, db.h)
@@ -2539,6 +2728,9 @@ local function CreateUI()
     frame:SetMovable(true)
     frame:SetResizable(true)
     frame:SetClampedToScreen(true)
+    -- the map itself is what stops at the screen's edges: the bezel round it, and the title bar
+    -- above it, may go past them
+    frame:SetClampRectInsets(PAD, -PAD, -(BAR_H + PAD), PAD)
     if frame.SetResizeBounds then
         frame:SetResizeBounds(MIN_W, MIN_H, floor(UIParent:GetWidth()), floor(UIParent:GetHeight()))
     elseif frame.SetMinResize then
@@ -2552,6 +2744,7 @@ local function CreateUI()
     bg:SetPoint("TOPLEFT", PAD, -(BAR_H + PAD))
     bg:SetPoint("BOTTOMRIGHT", -PAD, PAD)
     bg:SetColorTexture(0.04, 0.04, 0.05, 0.92)
+    tcache.winBg = bg
 
     local bar = CreateFrame("Frame", nil, frame)
     bar:SetPoint("TOPLEFT"); bar:SetPoint("TOPRIGHT"); bar:SetHeight(BAR_H)
@@ -2578,10 +2771,16 @@ local function CreateUI()
     -- a small close button that stays inside the title bar
     local close = CreateFrame("Button", nil, bar)
     close:SetSize(BAR_H - 4, BAR_H - 4)
-    close:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
+    close:SetPoint("RIGHT", bar, "RIGHT", -PAD, 0)
+    tcache.close = close
     close:SetFrameLevel(bar:GetFrameLevel() + 6)
-    close:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
-    close:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
+    -- the game's own red close button (the one its panels and map use), cut as the size button is
+    close:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+    close:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down")
+    close:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up", "ADD")
+    for _, t in ipairs({ close:GetNormalTexture(), close:GetPushedTexture(), close:GetHighlightTexture() }) do
+        if t then t:SetTexCoord(0.22, 0.78, 0.22, 0.78) end
+    end
     close:SetScript("OnClick", function() db.shown = false; frame:Hide() end)
 
     -- big / normal size, beside the close button (also: double-click the title bar)
@@ -2592,8 +2791,9 @@ local function CreateUI()
     function bigBtn.Show_()
         local up = db.big and "Interface\\Buttons\\UI-Panel-SmallerButton-Up" or "Interface\\Buttons\\UI-Panel-BiggerButton-Up"
         bigBtn:SetNormalTexture(up)
+        bigBtn:SetPushedTexture((up:gsub("%-Up$", "-Down")))
         bigBtn:SetHighlightTexture(up, "ADD")
-        for _, t in ipairs({ bigBtn:GetNormalTexture(), bigBtn:GetHighlightTexture() }) do
+        for _, t in ipairs({ bigBtn:GetNormalTexture(), bigBtn:GetPushedTexture(), bigBtn:GetHighlightTexture() }) do
             if t then t:SetTexCoord(0.22, 0.78, 0.22, 0.78) end       -- (the arrows, without the round button's rim)
         end
     end
@@ -2740,10 +2940,14 @@ local function CreateUI()
                 IsShiftKeyDown and IsShiftKeyDown() or false, IsControlKeyDown and IsControlKeyDown() or false, IsAltKeyDown and IsAltKeyDown() or false)
             if done then return end
         end
-        -- Alt+left click: a ping for the group (Bridge.lua), not after a drag
-        if IsAltKeyDown and IsAltKeyDown() and ns.onAltClick and btn == "LeftButton" and not dragMoved then
+        -- Left Alt+left click: a ping for the group (Pings.lua), not after a drag; Left Alt+right
+        -- click: the same with a line in chat. (Left Alt only: Right Alt is AltGr on many keyboards)
+        local lalt = IsLeftAltKeyDown and IsLeftAltKeyDown() or (not IsLeftAltKeyDown and IsAltKeyDown and IsAltKeyDown())
+        if lalt and ns.onAltClick and not IsControlKeyDown()
+           and ((btn == "LeftButton" and not dragMoved) or btn == "RightButton") then
             local cx, cy = CursorInView()
-            Run(function() ns.onAltClick((cx - ox) / scale, (cy - oy) / scale) end)
+            local chat = btn == "RightButton"
+            Run(function() ns.onAltClick((cx - ox) / scale, (cy - oy) / scale, chat) end)
         end
     end)
 
@@ -2791,9 +2995,25 @@ local function CreateUI()
     end)
 
     ns.ChromeFade(frame, bar, barBg, close, grip, tools, ns.bigBtn)
+    -- the bezel's width changed (Looks -> Vanilla style): everything round the map placed again
+    function ns.Relayout()
+        local want = ns.Vanilla() and 4 or 2
+        if want == PAD then return end
+        PAD = want
+        local b = tcache.winBg
+        b:ClearAllPoints(); b:SetPoint("TOPLEFT", PAD, -(BAR_H + PAD)); b:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+        view:ClearAllPoints(); view:SetPoint("TOPLEFT", PAD, -(BAR_H + PAD)); view:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+        tcache.close:ClearAllPoints(); tcache.close:SetPoint("RIGHT", tcache.close:GetParent(), "RIGHT", -PAD, 0)
+        frame:SetClampRectInsets(PAD, -PAD, -(BAR_H + PAD), PAD)
+        if ns.PlaceEdges then ns.PlaceEdges() end
+        OnResize(frame:GetWidth(), frame:GetHeight())
+    end
     frame:SetScript("OnSizeChanged", function(_, w, h) OnResize(w, h) end)
     frame:SetScript("OnShow", function()
         if needOverlays and built then BuildOverlays() end
+    end)
+    frame:SetScript("OnHide", function()
+        for _, f in ipairs(ns.detached) do f:Hide() end      -- (the menus beside it go with it)
     end)
     if ns.onUI then
         Run(function() ns.onUI({ frame = frame, view = view, grip = grip, tools = tools, followBtn = followBtn, modeBtn = modeBtn,
