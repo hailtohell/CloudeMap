@@ -171,12 +171,25 @@ local function Paint(f, st, view)
 end
 
 local zoneQuests, zoneRev = {}, {}
+local hl, hlSt      -- the area lit by pointing at a quest marker (B.QuestHover, below)
 
 local function DrawBlobs(view, canvas, ox, oy, scale, mode, shown, db)
     local used = {}
     last.view, last.ox, last.oy, last.scale, last.shown = view, ox, oy, scale, shown
     if not B.hover then B.HoverFrame(view) end
     last.canvas, last.level, last.mode = canvas, canvas:GetFrameLevel(), mode
+    -- the lit area follows the map too (it was left at the zoom it was lit at)
+    local h = hlSt
+    if h and h.node then
+        local s, x, y = h.node.w * scale / BLOB_W, ox + h.node.x * scale, oy + h.node.y * scale
+        if abs(h.s - s) > 0.0005 or abs(h.x - x) > 0.25 or abs(h.y - y) > 0.25 then
+            h.s, h.x, h.y = s, x, y
+            pcall(Paint, hl, h, view)
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function() if hlSt == h then pcall(Paint, hl, h, view) end end)
+            end
+        end
+    end
     if P.IsEnabled("questarea") then
         local quests
         local active = ActiveQuest()
@@ -251,7 +264,6 @@ end
 
 -- Pointing at a quest marker lights up its quest's area, as on the game's map: the area drawn
 -- the game's way (as its active quest) above the others, whether quest areas are on or not.
-local hl, hlSt
 function B.QuestHover(q, n)
     if hl then hl:Hide() end
     hlSt = nil

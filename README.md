@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.20.2 · SavedVariables: CloudeMapDB
+Version 0.20.3 · SavedVariables: CloudeMapDB
 
 ---
 
@@ -22,7 +22,10 @@ Version 0.20.2 · SavedVariables: CloudeMapDB
 
 ### Map
 - Whole continents as one seamless map; pan and zoom across zone borders.
-- Two modes: **parchment** (zone art) and **satellite** (minimap terrain).
+- Two modes: **parchment** (zone art) and **satellite** (minimap terrain, Zephras Isle included).
+- Map art is smoothed when zoomed out and not snapped to screen pixels, so it doesn't shimmer
+  while you pan and zoom.
+- Zone names show from zoom x2.5 to x10.
 - The zone under the pointer and your own zone are shown in full detail.
 - Cities take priority over the surrounding zone.
 - Unexplored areas shown dimmed.

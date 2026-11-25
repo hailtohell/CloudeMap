@@ -136,6 +136,10 @@ local function AcquireTex(sub, feather)
     local t = tremove(pool)
     if not t then
         t = canvas:CreateTexture(nil, "ARTWORK")
+        -- no snapping to screen pixels (as the game's own map tiles): snapped, the art's texels
+        -- jump between pixels as the map moves, and shrunk art shimmers in waves
+        if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
+        if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
         t.feather = feather and true or false
         texCreated = texCreated + 1
     end
@@ -181,7 +185,9 @@ end
 
 local function ShowSprite(s)
     local t = AcquireTex(s.sub, s.grad)
-    t:SetTexture(s.tex)
+    -- TRILINEAR: drawn smaller than the file, the map art uses its smaller copies (mipmaps) instead
+    -- of skipping pixels, which made fine patterns (fields, rooftops) shimmer into stripes (moiré)
+    t:SetTexture(s.tex, nil, nil, "TRILINEAR")
     t:SetTexCoord(s.u1, s.u2, s.v1, s.v2)
     t:SetSize(s.w, s.h)
     t:SetPoint("TOPLEFT", canvas, "TOPLEFT", s.x, -s.y)
@@ -705,6 +711,13 @@ local function Build()
     -- 5. explored-area overlays (follow their zone), 6. minimap detail tiles
     BuildOverlays()
     for _, cn in ipairs(conts) do BuildMini(cn) end
+    -- an island on an instance of its own (Zephras Isle) has its own minimap tiles
+    for _, n in ipairs(nodes) do
+        if n.extra and ns.tiles and ns.tiles[n.mapID] then
+            n.cal, n.calErr = Calibrate(n)
+            BuildMini(n)
+        end
+    end
     -- pins the game itself knows about (flight masters, dungeon entrances ...)
     if ns.pins then
         local ids = { conts = {}, zones = {} }
@@ -1147,17 +1160,15 @@ local function Update()
     T("draw: satellite tiles", UpdateList, lists.mini, vx1, vy1, vx2, vy2)
     local t0 = ns.prof.on and debugprofilestop()
 
-    -- zone name labels (screen space so the text stays readable); in map mode
-    -- they step aside once the zone's own parchment is showing
-    local sat = db.mode == "sat"
+    -- zone name labels (screen space so the text stays readable), from zoom x2.5 to x10
+    local rel = scale / minScale
+    local named = rel >= 2.5 * 0.999 and rel <= 10 * 1.001
     for _, n in ipairs(labelNodes) do
-        local px = n.w * scale
         local cx, cy = n.x + n.w / 2, n.y + n.h / 2
-        local la = sat and 1 or (1 - n.alpha * n.zoomA)
-        if la > 0.05 and px >= 90 and px <= VW * 0.7 and cx > vx1 and cx < vx2 and cy > vy1 and cy < vy2 then
+        if named and cx > vx1 and cx < vx2 and cy > vy1 and cy < vy2 then
             n.label = n.label or AcquireLabel()
             n.label:SetText(n.name)
-            n.label:SetAlpha(la)
+            n.label:SetAlpha(1)
             n.label:ClearAllPoints()
             n.label:SetPoint("CENTER", tcache.layer, "TOPLEFT", cx * scale, -cy * scale)
         elseif n.label then
@@ -1193,6 +1204,11 @@ local function Apply()
     end
     if not dirty then tcache.pan = true end
     dirty = true
+    -- a new zoom: the pins and names on the layer are placed for the old one, and the layer has
+    -- just moved for the new one. Place them now, or a frame can show them in the wrong spots
+    -- (with the update cap on, the map's work may wait a frame)
+    local cr = tcache.cull
+    if cr and cr.s ~= scale and not ns.paused then Update() end
     if db then   -- remember the view: centre in canvas units and zoom
         db.vc, db.vx, db.vy, db.vs = true, (VW / 2 - ox) / scale, (VH / 2 - oy) / scale, scale
     end
@@ -3112,6 +3128,25 @@ local function Debug()
         Say(("[%d] %s: %d zones, art %s, crop %.0f,%.0f-%.0f,%.0f | %s"):format(
             cn.mapID, cn.name, #cn.zones, cn.files and (cn.cols .. "x" .. cn.rows) or "none",
             c[1], c[2], c[3], c[4], ms))
+    end
+    for _, n in ipairs(nodes) do
+        local m = n.extra and n.mini
+        if m then
+            Say(("[%d] %s (own instance): satellite %s"):format(n.mapID, n.name or "?", m.err
+                and ("OFF: " .. m.err .. (m.total and (" (" .. m.inb .. "/" .. m.total .. " fit)") or ""))
+                or ("%d tiles placed, %d/%d fit%s, horizontal=%s"):format(m.count or 0, m.inb, m.total,
+                    m.swap and ", columns/rows swapped" or "", m.aIsH and "x" or "y")))
+            -- which of its tile files the game will load (a scratch texture, only for this report)
+            local probe = tcache.probe or canvas:CreateTexture(nil, "BACKGROUND")
+            tcache.probe = probe
+            probe:Hide()
+            local ok, bad, ex = 0, 0, {}
+            for k, id in pairs(ns.tiles[n.mapID] or {}) do
+                if probe:SetTexture(id) then ok = ok + 1 else bad = bad + 1; if #ex < 4 then ex[#ex + 1] = k .. "=" .. id end end
+            end
+            probe:SetTexture(nil)
+            Say(("  tile files: %d load, %d do not%s"):format(ok, bad, #ex > 0 and (" (e.g. " .. table.concat(ex, ", ") .. ")") or ""))
+        end
     end
     Say(("overlay pieces: %d explored (from the game), %d unexplored (from reveal data, %d zones have it)"):format(
         nExplored, nUnexplored, nRevealZones))
