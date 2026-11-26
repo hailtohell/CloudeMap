@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.21.0 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
+Version 0.21.1 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
 starting point for characters that have none yet)
 
 ---
@@ -65,9 +65,9 @@ starting point for characters that have none yet)
 - The game's map pin: Ctrl+right click to set or remove.
 - Quest markers and quest areas (all quests with others dimmed, or tracked only). The markers are
   CloudeMap's own buttons drawn with the game's art; a click tracks the quest.
-- Ley lines and elemental convergences for the Skyborne racial. **Until further notice this includes
-  unverified places:** player reports to the LeyLines addon still waiting for its maintainer's
-  review, marked "Unconfirmed" in their tooltip (they may be off or missing).
+- Ley lines (Alliance) and elemental convergences (Horde) for the Skyborne racial: about 700 of
+  each, from Skyborne Leyline & Convergence Marker's list (places seen in play by its users, and
+  Wowhead's).
 - Every category has its own toggle; one switch turns all pins off and back on.
 - Pin size adjustable.
 
@@ -136,7 +136,8 @@ stay visible zoomed right out.
 ## Credits
 
 - Unexplored-area data: OpenMap contributors (MIT, see `Reveal.LICENSE.txt`).
-- Ley line positions: the LeyLines addon by Wafhien and contributors (github.com/Wafhi3n/LeyLines).
+- Ley line and convergence positions: Skyborne Leyline & Convergence Marker by tr0tsky
+  (MIT, curseforge.com/wow/addons/sllcm, see `Leylines.LICENSE.txt`).
 
 ## Copyleft
 

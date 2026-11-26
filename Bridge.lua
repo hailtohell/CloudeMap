@@ -948,7 +948,7 @@ function B.Status()
         type(_G.Spy) == "table" and "loaded" or "not loaded")
         .. (B.DungeonStatus and (B.DungeonStatus() .. " | ") or "")
         .. ("tracking menu: %s | "):format(B.trackingTypes and table.concat(B.trackingTypes, ", ") or "not read")
-        .. ("ley lines %d, convergences %d (%d learned by LeyLines, %d unconfirmed)%s | "):format(B.leyCount or 0, B.convCount or 0, B.leyLearned or 0, B.leyUnconfirmed or 0, B.leyErr and (", error: " .. tostring(B.leyErr)) or "")
+        .. ("ley lines %d, convergences %d (Skyborne Leyline & Convergence Marker's list)%s | "):format(B.leyCount or 0, B.convCount or 0, B.leyErr and (", error: " .. tostring(B.leyErr)) or "")
         .. ("party pins %d%s | "):format(#party.list, B.partyErr and (", error: " .. tostring(B.partyErr)) or "")
         .. (B.pingStat and ("pings: group pings heard %d (%d before the map was drawn, %d on maps not drawn here)%s, "):format(
             B.pingStat.heard, B.pingStat.waited, B.pingStat.offmap,

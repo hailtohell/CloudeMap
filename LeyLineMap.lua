@@ -1,4 +1,5 @@
--- CloudeMap | ley lines and elemental convergences (data: Leylines.lua).
+-- CloudeMap | ley lines and elemental convergences (data: Leylines.lua, from Skyborne Leyline &
+-- Convergence Marker by tr0tsky).
 
 local ADDON, ns = ...
 local P, B = ns.pins, ns.bridge
@@ -7,14 +8,13 @@ local floor, max, min, abs = math.floor, math.max, math.min, math.abs
 local Spread, clamp, Now, Secret = B.Spread, B.clamp, B.Now, B.Secret
 
 ---------------------------------------------------------------------------
--- Ley lines (Leylines.lua), two toggles: the fissures the Alliance absorbs and the elemental
--- convergences (tornadoes) the Horde absorbs. Until switched by hand, the hero's own faction's
--- kind is on and the other off (a character of neither has both on). With the LeyLines addon installed, the
--- places it has learned in play are added to the shipped ones (read from LeyLinesDB by name, any
--- version that keeps nodes[map] = { {x, y, ..., kind}, ... }); a place already known within
--- about a hundredth of the map is not doubled.
+-- Ley lines (Leylines.lua: Skyborne Leyline & Convergence Marker's list), two toggles: the fissures
+-- the Alliance absorbs and the elemental convergences (tornadoes) the Horde absorbs. Until switched
+-- by hand, the hero's own faction's kind is on and the other off (a character of neither has both
+-- on). A place already listed within about a hundredth of the map is not doubled.
 ---------------------------------------------------------------------------
 do
+    local SOURCE = "|cff9d9d9dLocation: Skyborne Leyline & Convergence Marker (tr0tsky)|r"
     local ICON = {
         -- the game's own minimap marker for them (an atlas of the minimap icon sheet; the same for both)
         L = { atlas = "MagePortalAlliance", fixed = true, name = "Ley Line" },
@@ -53,7 +53,6 @@ do
     P.RegisterCategory("convergence", { name = "Elemental convergences (Horde)", order = 9, minScale = 0, size = 18,
         atlas = ICON.V.atlas })
 
-    local seen = ""
     -- the other faction's kind starts switched off (a choice made by hand is kept)
     local function Defaults()
         local f = UnitFactionGroup and UnitFactionGroup("player")
@@ -70,8 +69,8 @@ do
             local c = P.cats[cat]
             if c then c.atlas, c.texture, c.texCoord = ICON[kind].atlas, ICON[kind].texture, not ICON[kind].atlas and (ICON[kind].tc or TC) or nil end
         end
-        local lists, byMap, learned = { L = {}, V = {} }, { L = {}, V = {} }, 0
-        local function Add(kind, map, x, y, note)
+        local lists, byMap = { L = {}, V = {} }, { L = {}, V = {} }
+        local function Add(kind, map, x, y)
             if not (lists[kind] and type(map) == "number" and type(x) == "number" and type(y) == "number") then return end
             if x <= 0 or x >= 1 or y <= 0 or y >= 1 then return end
             local here = byMap[kind][map]
@@ -82,7 +81,7 @@ do
             here[#here + 1] = { x, y }
             local icon, list = ICON[kind], lists[kind]
             list[#list + 1] = { map = map, x = x, y = y, atlas = icon.atlas, texture = not icon.atlas and icon.texture or nil,
-                texCoord = not icon.atlas and (icon.tc or TC) or nil, name = icon.name, text = note }
+                texCoord = not icon.atlas and (icon.tc or TC) or nil, name = icon.name, text = SOURCE }
             return true
         end
         for kind, maps in pairs(data) do
@@ -90,62 +89,17 @@ do
                 for i = 1, #xy - 1, 2 do Add(kind, map, xy[i], xy[i + 1]) end
             end
         end
-        local db = _G.LeyLinesDB
-        if type(db) == "table" and type(db.nodes) == "table" then
-            for map, nodes in pairs(db.nodes) do
-                if type(nodes) == "table" then
-                    for _, n in ipairs(nodes) do
-                        if type(n) == "table" then
-                            local m = tonumber(n.map or n[3]) or tonumber(map)
-                            local kind = n.kind or n[4]
-                            if kind ~= "L" and kind ~= "V" then kind = nil end
-                            if kind and Add(kind, m, tonumber(n.x or n[1]), tonumber(n.y or n[2]), "learned by the LeyLines addon") then
-                                learned = learned + 1
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        -- last, the places still waiting for review by LeyLines' maintainer (Leylines.lua): only
-        -- where nothing confirmed or learned in play is already known, and said to be unconfirmed
-        local unconfirmed = 0
-        for kind, maps in pairs(type(ns.LEYLINES_UNCONFIRMED) == "table" and ns.LEYLINES_UNCONFIRMED or {}) do
-            for map, xyr in pairs(maps) do
-                for i = 1, #xyr - 2, 3 do
-                    local r = tonumber(xyr[i + 2]) or 1
-                    local note = ("|cffff8040Unconfirmed|r: a player report to the LeyLines addon not yet reviewed (%d %s); may be off or missing")
-                        :format(r, r == 1 and "report" or "reports")
-                    if Add(kind, map, xyr[i], xyr[i + 1], note) then unconfirmed = unconfirmed + 1 end
-                end
-            end
-        end
-        B.leyCount, B.convCount, B.leyLearned, B.leyUnconfirmed = #lists.L, #lists.V, learned, unconfirmed
+        B.leyCount, B.convCount = #lists.L, #lists.V
         P.SetPins(CAT.L, lists.L)
         P.SetPins(CAT.V, lists.V)
     end
-    -- at login, then again only when the LeyLines addon has learned something new
-    local function Sig()
-        local db = _G.LeyLinesDB
-        if type(db) ~= "table" or type(db.nodes) ~= "table" then return "" end
-        local n = 0
-        for _, nodes in pairs(db.nodes) do if type(nodes) == "table" then n = n + #nodes end end
-        return tostring(n)
-    end
+    -- at login (the list is fixed), and when the tracking menu changes (the icons)
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("PLAYER_LOGIN")
     pcall(ev.RegisterEvent, ev, "MINIMAP_UPDATE_TRACKING")
     ev:SetScript("OnEvent", function(_, event)
-        if event ~= "PLAYER_LOGIN" then pcall(Read) return end
-        seen = Sig()
         local ok, err = pcall(Read)
         if not ok then B.leyErr = err end
-        if C_Timer and C_Timer.NewTicker then
-            C_Timer.NewTicker(10, function()
-                local s = Sig()
-                if s ~= seen then seen = s; pcall(Read) end
-            end)
-        end
     end)
     B.ReadLeylines = Read
 end
