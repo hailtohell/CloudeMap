@@ -1,10 +1,11 @@
 ## Interface: 16001
 ## Title: CloudeMap
 ## Notes: Lightweight seamless world map: continent art, parchment map and satellite modes, unexplored areas, player tracking. Shown at login, /cmap help lists the commands.
-## Version: 0.20.3
+## Version: 0.21.0
 ## Category: Map
 ## IconTexture: Interface\AddOns\CloudeMap\Gfx\CloudeMap
 ## SavedVariables: CloudeMapDB, StitchMapDB
+## SavedVariablesPerCharacter: CloudeMapCharDB
 
 Tiles.lua
 Reveal.lua

@@ -102,7 +102,18 @@ local function InitDB()
     if CloudeMapDB == nil and type(StitchMapDB) == "table" then CloudeMapDB = StitchMapDB end
     StitchMapDB = nil
     CloudeMapDB = CloudeMapDB or {}
-    db = CloudeMapDB
+    -- settings are kept per character (CloudeMapCharDB); a character without its own starts from
+    -- the account's (CloudeMapDB, where they were kept before 0.21.0, and left as they were)
+    if type(CloudeMapCharDB) ~= "table" then
+        local function Copy(t)
+            local c = {}
+            for k, v in pairs(t) do c[k] = type(v) == "table" and Copy(v) or v end
+            return c
+        end
+        CloudeMapCharDB = Copy(CloudeMapDB)
+    end
+    db = CloudeMapCharDB
+    ns.db = db
     for k, v in pairs(DEFAULTS) do
         if db[k] == nil then db[k] = v end
     end
@@ -951,7 +962,7 @@ function tcache.DrawPins(c, list, sz)
                 end
                 show = (detail == nil and city == nil) or (owner ~= nil and (owner == detail or owner == city))
             else
-                show = (n == detail) or (n == city) or (db.mode ~= "sat" and (n.alpha or 0) * (n.zoomA or 0) > 0.5)
+                show = (n == detail) or (n == city) or (n.alpha or 0) * (n.zoomA or 0) > 0.5
             end
             if not show then px = nil end
         end
@@ -1050,13 +1061,11 @@ local function UpdatePins()
     end
     if detail and not seen[detail.mapID] then seen[detail.mapID] = true; maps[#maps + 1] = detail.mapID end
     if city and not seen[city.mapID] then seen[city.mapID] = true; maps[#maps + 1] = city.mapID end
-    if db.mode ~= "sat" then
-        for _, n in ipairs(zoneList) do
-            if (n.alpha or 0) * (n.zoomA or 0) > 0.5 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
-        end
-        for _, n in ipairs(cityList) do
-            if (n.alpha or 0) * (n.zoomA or 0) > 0.5 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
-        end
+    for _, n in ipairs(zoneList) do
+        if (n.alpha or 0) * (n.zoomA or 0) > 0.5 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
+    end
+    for _, n in ipairs(cityList) do
+        if (n.alpha or 0) * (n.zoomA or 0) > 0.5 and not seen[n.mapID] then seen[n.mapID] = true; maps[#maps + 1] = n.mapID end
     end
     local Draw = tcache.DrawPins
     -- two passes: every category first, then the bulk ones (gathering nodes, hundreds at once), so
@@ -1089,11 +1098,10 @@ local function UpdatePins()
         local shown = ns.shownZones or {}
         ns.shownZones = shown
         for i = #shown, 1, -1 do shown[i] = nil end
-        if db.mode == "sat" then
-            if detail then shown[1] = detail end
-        else
+        do      -- (both modes: the zones uncovered as in parchment; satellite adds the one in the middle)
+            if db.mode == "sat" and detail then shown[1] = detail end
             for _, z in ipairs(zoneList) do
-                if (z.alpha or 0) * (z.zoomA or 0) > 0.5 then shown[#shown + 1] = z end
+                if z ~= shown[1] and (z.alpha or 0) * (z.zoomA or 0) > 0.5 then shown[#shown + 1] = z end
             end
             -- cities have maps of their own, and the game files a quest given or ended in town
             -- under the city, not the zone round it: a city counts as drawn when its own map is,
@@ -1393,7 +1401,9 @@ end
 function ns.dbgView() return ox, oy, scale, focus, hoverZone, prevFocus end     -- (tests)
 
 local function UpdateFocus(dt)
-    if not built or (#zoneList == 0 and #cityList == 0) or db.mode == "sat" then return end   -- parchment is a map-mode thing
+    -- (satellite too: the zones it picks are the ones whose pins show, in both modes; the parchment
+    -- itself is only drawn in map mode)
+    if not built or (#zoneList == 0 and #cityList == 0) then return end
     -- nothing moved (pointer, hero, map), nothing fading, no zone held by the band: nothing to decide
     local gx, gy = GetCursorPosition()
     local over = view:IsMouseOver()

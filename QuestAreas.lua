@@ -285,34 +285,109 @@ function B.QuestHover(q, n)
     end
 end
 
-local function NewPoi(view, canvas)
-    local ok, f = pcall(CreateFrame, "Button", nil, view, "POIButtonTemplate")
-    if not ok or type(f) ~= "table" or type(f.SetQuestID) ~= "function" then
-        poiOK = false; B.poiOK = poiOK
-        return
+-- The quest marker: CloudeMap's own button drawn with the game's own art (the atlases its
+-- POIButtonTemplate uses, as in Blizzard_POIButton/POIButton.lua). Not the game's button: one made
+-- from its template counts as the game's, and its own code then gets blocked and blamed on us.
+local CLASS_ART = {}        -- [classification] = atlas family
+do
+    local C = Enum and Enum.QuestClassification
+    if C then
+        if C.Legendary then CLASS_ART[C.Legendary] = "UI-QuestPoiLegendary" end
+        if C.Campaign then CLASS_ART[C.Campaign] = "UI-QuestPoiCampaign" end
+        if C.Calling then CLASS_ART[C.Calling] = "UI-QuestPoiCampaign" end
+        if C.Recurring then CLASS_ART[C.Recurring] = "UI-QuestPoiRecurring" end
+        if C.Important then CLASS_ART[C.Important] = "UI-QuestPoiImportant" end
+        if C.Meta then CLASS_ART[C.Meta] = "UI-QuestPoiWrapper" end
     end
+end
+local TURN_IN = {
+    ["UI-QuestPoiLegendary"] = "UI-QuestPoiLegendary-QuestBangTurnIn",
+    ["UI-QuestPoiCampaign"] = "UI-QuestPoiCampaign-QuestBangTurnIn",
+    ["UI-QuestPoiRecurring"] = "UI-QuestPoiRecurring-QuestBangTurnIn",
+    ["UI-QuestPoiImportant"] = "UI-QuestPoiImportant-QuestBangTurnIn",
+    ["UI-QuestPoiWrapper"] = "UI-QuestPoiWrapper-QuestBangTurnIn",
+}
+
+local function Atlas(t, name)
+    if t:SetAtlas(name, true) == false then t:SetTexture(nil) end
+end
+
+local function PoiDown(self)
+    self.down = true
+    self.Display:ClearAllPoints(); self.Display:SetPoint("CENTER", 1, -1)
+    self.Normal:Hide(); self.Pushed:Show()
+end
+
+local function PoiUp(self)
+    self.down = nil
+    self.Display:ClearAllPoints(); self.Display:SetPoint("CENTER")
+    self.Normal:Show(); self.Pushed:Hide()
+end
+
+local function NewPoi(view, canvas)
+    local f = CreateFrame("Button", nil, view)
+    f:SetSize(20, 20)
     f:SetFrameLevel(canvas:GetFrameLevel() + 8)
-    f:HookScript("OnEnter", function(self)
+    f:RegisterForClicks("LeftButtonUp")
+    f.Glow = f:CreateTexture(nil, "BACKGROUND")
+    f.Glow:SetPoint("CENTER"); f.Glow:SetBlendMode("ADD")
+    f.Normal = f:CreateTexture(nil, "BORDER")
+    f.Normal:SetPoint("CENTER")
+    f.Pushed = f:CreateTexture(nil, "BORDER")
+    f.Pushed:SetPoint("CENTER"); f.Pushed:Hide()
+    f.Display = f:CreateTexture(nil, "ARTWORK", nil, 1)
+    f.Display:SetPoint("CENTER")
+    f.Light = f:CreateTexture(nil, "OVERLAY")
+    f.Light:SetPoint("CENTER"); f.Light:SetBlendMode("ADD"); f.Light:Hide()
+    f:SetScript("OnMouseDown", PoiDown)
+    f:SetScript("OnMouseUp", PoiUp)
+    f:SetScript("OnEnter", function(self)
+        self.Light:Show()
         if self.smQuest and QuestTip then QuestTip(self.smQuest, self) end
         if self.smQuest then B.QuestHover(self.smQuest, self.smNode) end
     end)
-    f:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end; B.QuestHover() end)
+    f:SetScript("OnLeave", function(self)
+        self.Light:Hide()
+        if self.down then PoiUp(self) end
+        if GameTooltip then GameTooltip:Hide() end
+        B.QuestHover()
+    end)
+    -- a click tracks the quest (the arrow on the screen), or stops tracking it, as the game's does
+    f:SetScript("OnClick", function(self)
+        local q, ST = self.smQuest, C_SuperTrack
+        if not (q and ST) then return end
+        if self.smActive then
+            if ST.ClearAllSuperTracked then pcall(ST.ClearAllSuperTracked) end
+            if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF) end
+        else
+            if ST.SetSuperTrackedQuestID then pcall(ST.SetSuperTrackedQuestID, q) end
+            if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON) end
+        end
+        -- (SUPER_TRACKING_CHANGED, below, has the map drawn again with the new look)
+    end)
     return f
 end
 
 local function SetupPoi(f, q, isActive)
-    f.smQuest = q
-    local style
-    if POIButtonUtil then
-        if POIButtonUtil.GetStyle then style = POIButtonUtil.GetStyle(q) end
-        if not style and POIButtonUtil.Style then
-            style = QuestDone(q) and POIButtonUtil.Style.QuestComplete or POIButtonUtil.Style.QuestInProgress
-        end
+    f.smQuest, f.smActive = q, isActive
+    local cls
+    if C_QuestInfoSystem and C_QuestInfoSystem.GetQuestClassification then
+        local ok, v = pcall(C_QuestInfoSystem.GetQuestClassification, q)
+        if ok then cls = v end
     end
-    f:SetQuestID(q)
-    if style and f.SetStyle then f:SetStyle(style) end
-    if f.SetSelected then f:SetSelected(isActive) end
-    if f.UpdateButtonStyle then f:UpdateButtonStyle() end
+    local fam = CLASS_ART[cls]
+    local base = fam or "UI-QuestPoi"
+    local sel = isActive and "-SuperTracked" or ""
+    Atlas(f.Normal, base .. "-QuestNumber" .. sel)
+    Atlas(f.Pushed, base .. "-QuestNumber-Pressed" .. sel)
+    Atlas(f.Glow, base .. "-OuterGlow")
+    Atlas(f.Light, base .. "-InnerGlow")
+    f.Glow:SetShown(isActive and true or false)
+    if QuestDone(q) then
+        Atlas(f.Display, fam and TURN_IN[fam] or "UI-QuestIcon-TurnIn-Normal")
+    else
+        Atlas(f.Display, isActive and "Quest-In-Progress-Icon-Brown" or "Quest-In-Progress-Icon-yellow")
+    end
 end
 
 -- after a fight: the quest buttons it held back are made (the map drawn again)
@@ -330,10 +405,8 @@ local function DrawPois(view, canvas, ox, oy, scale, mode, shown, db)
     local on = P.IsEnabled("questpoi")
     if on and poiOK ~= false then
         local active = ActiveQuest()
-        -- the game's quest button calls a function that is off limits to addons in combat
-        -- (SetPassThroughButtons, from its setup): none is made or restyled in a fight; that waits
-        -- for the fight's end (below), the ones already there keep moving with the map
-        local fight = InCombatLockdown and InCombatLockdown()
+        -- (the buttons are CloudeMap's own, so a fight changes nothing for them)
+        local fight = false
         for _, n in ipairs(shown) do
             local xy = poiXY[n.mapID]
             for _, q in ipairs(zoneQuests[n.mapID] or {}) do

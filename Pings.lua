@@ -341,7 +341,9 @@ do
         if event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
             local who, fn = ...
             if who == ADDON then
-                B.blocked = tostring(fn)
+                local fight = InCombatLockdown and InCombatLockdown()
+                B.blockedN = (B.blockedN or 0) + 1
+                B.blocked = tostring(fn) .. (fight and " in a fight" or " out of a fight")
                 if tostring(fn):find("PingLocation") then B.noMMSend = true end
             end
             return

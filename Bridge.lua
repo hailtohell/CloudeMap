@@ -924,7 +924,7 @@ function B.Status()
     if HN then for _ in pairs(HN.plugins) do plugins = plugins + 1 end end
     local texLine = ""
     local poiOK, blobOK = B.poiOK, B.blobOK         -- (QuestAreas.lua)
-    texLine = texLine .. " | quest markers: " .. (poiOK == nil and "not drawn yet" or (poiOK and "the game's own buttons" or "plain icons (the game's button template failed)"))
+    texLine = texLine .. " | quest markers: " .. (poiOK == nil and "not drawn yet" or (poiOK and "CloudeMap's buttons with the game's art" or "plain icons (the button failed)"))
         .. (B.poiErr and (", error: " .. tostring(B.poiErr)) or "")
     local blobLine = ("quest areas: %s%s%s%s | "):format(
         blobOK == nil and "not drawn yet" or (blobOK and ("game frame working, %d quests in the log, last drawn %s"):format(B.blobQuests or 0, tostring(B.blobLast)) or "the game has no QuestPOIFrame here"),
@@ -956,7 +956,7 @@ function B.Status()
         .. ("sent %d%s, prefix registration %s, "):format(B.pingSent or 0,
             B.pingSentLast and (" (last " .. B.pingSentLast .. ")") or "", tostring(B.pingPrefix))
         .. ("minimap pings %s, last %s%s | "):format(B.mmHooked and "heard" or "not available", tostring(B.mmLast or "none"),
-            (B.pingErr and (", send error " .. tostring(B.pingErr)) or "") .. (B.blocked and (", blocked: " .. B.blocked) or ""))
+            (B.pingErr and (", send error " .. tostring(B.pingErr)) or "") .. (B.blocked and (", blocked " .. (B.blockedN or 1) .. "x, last " .. B.blocked) or ""))
         .. (B.PluginStatus and B.PluginStatus() or "")
     return blobLine .. qs .. ("addon icons: Questie %s | pin libraries %s | HandyNotes %s%s"):format(
         B.questie == nil and "not seen" or (B.questie and "read" or "frames not available"),
@@ -1047,12 +1047,12 @@ end
 
 ---------------------------------------------------------------------------
 -- Minimap button: a click shows or hides the map; dragging moves the button round the minimap
--- (its place is kept in CloudeMapDB.minimapAngle, in degrees).
+-- (its place is kept in the settings' minimapAngle, in degrees).
 ---------------------------------------------------------------------------
 do
     local btn
     local function Place()
-        local db = _G.CloudeMapDB
+        local db = ns.db
         local a = math.rad(type(db) == "table" and tonumber(db.minimapAngle) or 215)
         local r = (Minimap:GetWidth() or 140) / 2 + 6
         btn:ClearAllPoints()
@@ -1098,7 +1098,7 @@ do
                 local es = Minimap:GetEffectiveScale()
                 if not (mx and cx and es and es > 0) then return end
                 local deg = math.deg(math.atan2(cy / es - my, cx / es - mx))
-                if type(_G.CloudeMapDB) == "table" then _G.CloudeMapDB.minimapAngle = deg end
+                if type(ns.db) == "table" then ns.db.minimapAngle = deg end
                 Place()
             end)
         end)

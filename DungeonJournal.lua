@@ -61,7 +61,7 @@ do
     local function Choose(FDJ)
         local maps = FDJ.DUNGEON_MAPS
         local function Good(name) return type(name) == "string" and maps[name] and not Locked(FDJ, name) and name end
-        local sync = not (_G.CloudeMapDB and _G.CloudeMapDB.djSync == false)
+        local sync = not (ns.db and ns.db.djSync == false)
         return Good(Call(FDJ, "CurrentDungeon")) or (sync and Good((Call(FDJ, "GetSelectedDungeon")))) or Good(dj.name)
             or Good((Call(FDJ, "GetSelectedDungeon")))
             or (function() for _, name in ipairs(List(FDJ)) do if Good(name) then return name end end end)()
@@ -93,7 +93,7 @@ do
         local n = big and "ForeverDJ_SystemFont_Shadow_Large_Outline" or "ForeverDJ_SystemFont_Outline"
         return _G[n] and n or (big and "GameFontNormalLarge" or "GameFontNormal")
     end
-    local function Sync() return not (_G.CloudeMapDB and _G.CloudeMapDB.djSync == false) end
+    local function Sync() return not (ns.db and ns.db.djSync == false) end
 
     -- the game map a floor is drawn from: the journal's map ID, or, when this client has no art
     -- under it, the one the journal finds by the dungeon's name
@@ -640,7 +640,7 @@ do
             f:EnableMouse(false)
             local acc = 0
             f:SetScript("OnUpdate", function(self, el)
-                local cap = CloudeMapDB and CloudeMapDB.cap
+                local cap = ns.db and ns.db.cap
                 if cap then acc = acc + (el or 0); if acc < 1 / cap then return end; acc = 0 end
                 if not dj.lastBest then return end
                 dj.Place(self)
@@ -1034,7 +1034,7 @@ do
             local x, y = XY(ok and pos or nil)
             st.hero = x and true or false
             if x then
-                local k = CloudeMapDB and CloudeMapDB.heroSize or 1     -- (Options: Player marker size)
+                local k = ns.db and ns.db.heroSize or 1     -- (Options: Player marker size)
                 local tex = Put(x, y, 30 * k, 6)
                 tex:SetTexture("Interface\\Minimap\\MinimapArrow")
                 local facing = GetPlayerFacing and Plain(GetPlayerFacing())

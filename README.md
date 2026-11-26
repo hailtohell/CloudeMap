@@ -14,7 +14,8 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.20.3 · SavedVariables: CloudeMapDB
+Version 0.21.0 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
+starting point for characters that have none yet)
 
 ---
 
@@ -22,7 +23,9 @@ Version 0.20.3 · SavedVariables: CloudeMapDB
 
 ### Map
 - Whole continents as one seamless map; pan and zoom across zone borders.
-- Two modes: **parchment** (zone art) and **satellite** (minimap terrain, Zephras Isle included).
+- Two modes: **parchment** (zone art) and **satellite** (minimap terrain, including Zephras Isle and
+  WoW Forever's new areas). Both show the pins of the same zones.
+- Settings are saved per character.
 - Map art is smoothed when zoomed out and not snapped to screen pixels, so it doesn't shimmer
   while you pan and zoom.
 - Zone names show from zoom x2.5 to x10.
@@ -60,7 +63,8 @@ Version 0.20.3 · SavedVariables: CloudeMapDB
 - Flight masters, dungeons and raids, trainers, innkeepers, mailboxes, auctioneers, bankers,
   anvils and forges, zone links.
 - The game's map pin: Ctrl+right click to set or remove.
-- Quest markers and quest areas (all quests with others dimmed, or tracked only).
+- Quest markers and quest areas (all quests with others dimmed, or tracked only). The markers are
+  CloudeMap's own buttons drawn with the game's art; a click tracks the quest.
 - Ley lines and elemental convergences for the Skyborne racial. **Until further notice this includes
   unverified places:** player reports to the LeyLines addon still waiting for its maintainer's
   review, marked "Unconfirmed" in their tooltip (they may be off or missing).
