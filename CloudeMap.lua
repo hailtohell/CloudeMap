@@ -16,7 +16,9 @@ local MARK = 32                        -- player arrow size in pixels (Carbonite
 local ARROW = "Interface\\Minimap\\MinimapArrow"     -- the stock minimap arrow, same as Carbonite
 
 -- Draw sub-levels (higher draws on top). Everything shares one canvas.
-local SUB_WORLD, SUB_CONT, SUB_ZONE, SUB_FOG, SUB_OVER, SUB_MINI, SUB_CITY = -3, -2, -1, 0, 1, 2, 3
+-- (zone pieces of the zone in front, under the pointer or the hero's, are lifted by SUB_FRONT
+-- over those of other zones: 3 and 4, between the satellite tiles and the cities)
+local SUB_WORLD, SUB_CONT, SUB_ZONE, SUB_FOG, SUB_OVER, SUB_MINI, SUB_CITY, SUB_FRONT = -3, -2, -1, 0, 1, 2, 5, 3
 
 -- Zone parchment fades in when the zone is this wide on screen (pixels); a
 -- city's own map comes in sooner, since a city is small next to its zone.
@@ -209,6 +211,7 @@ local function ShowSprite(s)
         t:SetVertexColor(1, 1, 1, 1)      -- pooled textures may still be dimmed from an earlier sprite
     end
     s.tx = t
+    s.tsub = s.sub
     s.a, s.sv = nil, nil      -- force alpha and shade to be applied
 end
 
@@ -237,12 +240,14 @@ local function UpdateList(list, vx1, vy1, vx2, vy2, off)
         local here      -- in the drawn area, at a zoom where the sprite exists
         if not off and (not s.mode or s.mode == db.mode) then
             local sc = s.rel and rs or scale
-            if sc >= s.minS and (not s.maxS or sc <= s.maxS)
+            local o = s.owner
+            -- (Looks → reveal all zones: every zone's art from zoom x2.5 on, whatever the zone's size)
+            local all = o and db.revealAll and rs >= 2.5 * 0.999
+            if (sc >= s.minS or all) and (not s.maxS or sc <= s.maxS)
                and s.x < vx2 and s.x + s.w > vx1 and s.y < vy2 and s.y + s.h > vy1 then
                 here = true
                 a = 1
-                local o = s.owner
-                if o then a = o.alpha * o.zoomA end
+                if o and not all then a = o.alpha * o.zoomA end
                 if a > 0 and s.fi0 then a = a * clamp((sc - s.fi0) / (s.fi1 - s.fi0), 0, 1) end
                 if a > 0 and s.fo0 then a = a * clamp((s.fo1 - sc) / (s.fo1 - s.fo0), 0, 1) end
             end
@@ -250,6 +255,16 @@ local function UpdateList(list, vx1, vy1, vx2, vy2, off)
         if a >= 0.01 then
             if not s.tx then ShowSprite(s) end
             if s.warm then s.tx:Show(); s.warm = nil end
+            -- zone pieces overlap where zones meet: the zone in front draws over its neighbours, and
+            -- WoW Forever's new zones (their pieces are larger and spill over the old zones round
+            -- them: Riverglades over Redridge, Burning Steppes, Badlands) under the old ones
+            local o = s.owner
+            local sub = s.sub
+            if o and (sub == SUB_FOG or sub == SUB_OVER) then
+                if o == tcache.front then sub = sub + SUB_FRONT
+                elseif (o.mapID or 0) >= 2000 then sub = SUB_ZONE end
+            end
+            if s.tsub ~= sub then s.tx:SetDrawLayer("ARTWORK", sub); s.tsub = sub end
             live = live + 1
             if s.a ~= a then s.tx:SetAlpha(a); s.a = a end
             if s.shade and s.sv ~= FOG then
@@ -1483,6 +1498,10 @@ local function UpdateFocus(dt)
     end
 
     end     -- (not hold)
+    -- the zone in front (under the pointer, else the hero's or the one in view) draws over the
+    -- zone pieces of its neighbours where they overlap (UpdateList, SUB_FRONT)
+    local front = hoverZone or focus
+    if tcache.front ~= front then tcache.front = front; dirty, tcache.pan = true, false end
     if focus ~= lastFocus then
         -- the hero walked (or flew) out of a zone: it may stay a while (the band); the pointer: gone
         -- (on a flight path: gone at once too, the band is for walking and riding)
@@ -2002,6 +2021,32 @@ local function MakeButton(parent, text, w, onClick, tip, icon)
             base = on and { 1, 0.82, 0, 0.9 } or { 0, 0, 0, 0.6 }
             bg:SetColorTexture(base[1], base[2], base[3], base[4])
         end
+        -- vanilla style: the round button of the minimap's addon buttons (the game's own art, laid
+        -- out as they are: a dark disc, the icon, the gold ring, the light on mouseover), 31 across
+        local back = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+        back:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+        local ring = b:CreateTexture(nil, "OVERLAY")
+        ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+        local lit = b:CreateTexture(nil, "HIGHLIGHT")
+        lit:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+        lit:SetAllPoints()
+        lit:SetBlendMode("ADD")
+        local function Place(v, down)
+            tex:ClearAllPoints()
+            if v then
+                b:SetSize(31, 31)
+                back:ClearAllPoints(); back:SetSize(20, 20); back:SetPoint("TOPLEFT", 7, -5)
+                tex:SetSize(17, 17); tex:SetPoint("TOPLEFT", down and 8 or 7, down and -7 or -6)
+                ring:ClearAllPoints(); ring:SetSize(53, 53); ring:SetPoint("TOPLEFT")
+            else
+                b:SetSize(22, 22)
+                tex:SetPoint("TOPLEFT", 2, -2); tex:SetPoint("BOTTOMRIGHT", -2, 2)
+            end
+            back:SetShown(v); ring:SetShown(v); lit:SetShown(v); bg:SetShown(not v)
+        end
+        ns.Skin(function(v) Place(v) end)
+        b:SetScript("OnMouseDown", function() if ns.Vanilla() then Place(true, true) end end)
+        b:SetScript("OnMouseUp", function() if ns.Vanilla() then Place(true, false) end end)
     end
     if not icon then
         -- vanilla style: the game's red panel button (its normal, pressed and lit pictures)
@@ -2570,6 +2615,14 @@ local function CreateOptions(anchor)
           click = function() db.vanilla = (db.vanilla ~= true) or nil; ns.ApplyLooks() end },
         { kind = "check", text = "Fade the frame when the pointer leaves", on = function() return not db.noFade end,
           click = function() db.noFade = (db.noFade ~= true) or nil end },
+        -- parchment: every zone's own map drawn (zoomed in far enough), not only the hero's and the
+        -- pointer's; pins stay as they are (the hero's and the pointer's zone)
+        { kind = "check", text = "Parchment: reveal all zones", on = function() return db.revealAll == true end,
+          tip = "On: every zone shows its own parchment map from zoom x2.5 on.\nOff: only your zone and the one under the pointer do.\nPins show for your zone and the one under the pointer either way.",
+          click = function()
+              db.revealAll = (db.revealAll ~= true) or nil
+              if ns.pins and ns.pins.onChange then ns.pins.onChange() end
+          end },
     }
     local function SizeLayout()
         local y = -8
@@ -2651,6 +2704,42 @@ local function CreateOptions(anchor)
     ShowCap(hzBtn)
     optMenu.hzBtn = hzBtn
     items[#items + 1] = hzBtn
+    -- the shortcut that opens and closes the map (left click: press the new one; right click: none)
+    local SC = ns.Shortcut
+    local function ShowKey(b2)
+        local key = SC.Key()
+        b2.text:SetText("Shortcut: " .. (SC.Catching() and "|cffffd100press a key (Esc cancels)|r"
+            or key and ("|cff40d040" .. key .. "|r") or "|cff999999none|r"))
+    end
+    local keyBtn = MakeButton(optMenu, "", 180, nil, function()
+        local key = SC.Key()
+        local t = "Shortcut to open and close the map: " .. (key or "none") .. "."
+            .. "\nLeft click, then press a key, with Shift, Ctrl or Alt if you like. Esc cancels."
+            .. "\nRight click: no shortcut."
+        local act = key and SC.GameAction(key)
+        if act then t = t .. "\n|cffff8040While CloudeMap is loaded this key opens the map, not: " .. act .. "|r" end
+        if InCombatLockdown and InCombatLockdown() then t = t .. "\n|cffff8040Not in a fight.|r" end
+        return t
+    end)
+    keyBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    keyBtn:SetScript("OnClick", function(self, btn)
+        if btn == "RightButton" then
+            SC.Stop(); SC.Clear()
+        elseif SC.Catching() then
+            SC.Stop()
+        else
+            SC.Start(function() ShowKey(self); optMenu.Layout() end)
+        end
+        ShowKey(self)
+        optMenu.Layout()
+    end)
+    keyBtn.text:ClearAllPoints()
+    keyBtn.text:SetPoint("LEFT", 6, 0)
+    keyBtn.full = true
+    ShowKey(keyBtn)
+    optMenu.keyBtn = keyBtn
+    items[#items + 1] = keyBtn
+    optMenu:HookScript("OnHide", function() if SC.Catching() then SC.Stop() end end)
     function ns.menuRefresh()
         if questMenu and questMenu:IsShown() then ns.FillMenu(questMenu, questRows) end
     end
@@ -2904,17 +2993,20 @@ local function CreateUI()
     StyleFollow()
     tools.list = { options, modeBtn, followBtn }
     function tools.Layout()
-        local x = 0
+        local x, h = 0, 22
         for _, b in ipairs(tools.list) do
             if b:IsShown() then
                 b:ClearAllPoints()
                 b:SetPoint("RIGHT", tools, "RIGHT", -x, 0)      -- from the corner inwards
                 x = x + b:GetWidth() + 3
+                h = max(h, b:GetHeight() or 22)
             end
         end
         tools:SetWidth(max(x, 1))
+        tools:SetHeight(h)                                      -- (round vanilla buttons are larger)
     end
     tools.Layout()
+    ns.Skin(function() tools.Layout() end)                      -- (their size changes with the style)
 
     -- where the pointer is: top right inside the map, on a faint box, only while there is something to say
     local infoBox = CreateFrame("Frame", nil, view)
@@ -3109,6 +3201,89 @@ local function SetShown(on)
     end
 end
 ns.Toggle = function() SetShown(not (frame and frame:IsShown())) end      -- (Bridge.lua: the minimap button)
+
+---------------------------------------------------------------------------
+-- The shortcut (Options → Shortcut): a key, or a key with Shift/Ctrl/Alt, that opens and closes
+-- the map. Kept in the settings (db.shortcut, "CTRL-M" and so on) and set as an override binding
+-- on CloudeMap's own button, so the game's key bindings are not changed: the key does CloudeMap's
+-- toggle while CloudeMap is loaded, and its own action again without it. The game allows binding
+-- changes only out of a fight: one made in a fight waits for its end.
+---------------------------------------------------------------------------
+do
+    local SC = {}
+    ns.Shortcut = SC
+    local owner = CreateFrame("Button", "CloudeMapToggleButton", UIParent)   -- (a binding clicks a button by name)
+    owner:SetSize(1, 1)
+    owner:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10, 10)
+    owner:EnableMouse(false)
+    owner:SetScript("OnClick", function() ns.Toggle() end)
+    local wait = false
+    local function Fight() return InCombatLockdown and InCombatLockdown() end
+    function SC.Key() return db and type(db.shortcut) == "string" and db.shortcut ~= "" and db.shortcut or nil end
+    function SC.Apply()
+        if Fight() then wait = true return end
+        wait = false
+        if ClearOverrideBindings then ClearOverrideBindings(owner) end
+        local key = SC.Key()
+        if key and SetOverrideBindingClick then SetOverrideBindingClick(owner, true, key, "CloudeMapToggleButton") end
+    end
+    -- what the key does in the game without CloudeMap (its own binding, not ours)
+    function SC.GameAction(key)
+        local act = key and GetBindingAction and GetBindingAction(key)
+        if not act or act == "" then return nil end
+        return (GetBindingName and GetBindingName(act)) or act
+    end
+
+    -- catching the next key press (Esc cancels); nothing is caught in a fight
+    local catcher = CreateFrame("Frame", nil, UIParent)
+    catcher:Hide()
+    catcher:SetFrameStrata("TOOLTIP")
+    local MOD = { LSHIFT = 1, RSHIFT = 1, LCTRL = 1, RCTRL = 1, LALT = 1, RALT = 1, LMETA = 1, RMETA = 1 }
+    local done
+    function SC.Catching() return catcher:IsShown() end
+    function SC.Stop()
+        if catcher:IsShown() then
+            catcher:Hide()
+            if not Fight() then catcher:EnableKeyboard(false) end
+        end
+        local f = done; done = nil
+        if f then f() end
+    end
+    function SC.Start(onDone)
+        if Fight() then return false end
+        done = onDone
+        catcher:Show()
+        catcher:EnableKeyboard(true)
+        catcher:SetPropagateKeyboardInput(false)
+        return true
+    end
+    catcher:SetScript("OnKeyDown", function(_, key)
+        if MOD[key] then return end                     -- (wait for the key that goes with them)
+        if key ~= "ESCAPE" then
+            local combo = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "")
+                .. (IsShiftKeyDown() and "SHIFT-" or "") .. key
+            db.shortcut = combo
+            SC.Apply()
+        end
+        SC.Stop()
+    end)
+    function SC.Clear()
+        db.shortcut = nil
+        SC.Apply()
+    end
+
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_LOGIN")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:RegisterEvent("PLAYER_REGEN_DISABLED")
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then
+            if catcher:IsShown() then SC.Stop() end     -- (a fight: stop catching keys)
+        elseif event == "PLAYER_LOGIN" or wait then
+            SC.Apply()
+        end
+    end)
+end
 
 ---------------------------------------------------------------------------
 -- Slash commands

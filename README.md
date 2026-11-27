@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.21.1 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
+Version 0.21.2 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
 starting point for characters that have none yet)
 
 ---
@@ -48,9 +48,13 @@ starting point for characters that have none yet)
 - Zoom level shown while zooming: x1 is the whole world, the wheel steps through round figures (x1.5, x2, x3 … x24, x32 …).
 - Toolbar: parchment/satellite, Follow, Options, plus Dungeon Journal and BG when available.
 - Options: **Looks** (window opacity, pin, party pin, player marker and GatherMate pin sizes,
-  vanilla style, frame fade), **Pins** and **Quest areas** each open their own list beside the
-  menu with a click (one at a time, a second click closes it), plus the update cap and Dungeon
-  Journal sync. A click anywhere else closes the menu.
+  vanilla style with round minimap-style toolbar buttons, frame fade, parchment "reveal all zones"
+  from zoom x2.5), **Pins** and **Quest areas** each open their own list beside the menu with a
+  click (one at a time, a second click closes it), plus the update cap, Dungeon Journal sync and a
+  **Shortcut** to open and close the map (left click, then press a key; right click clears it; it
+  doesn't change your game key bindings). A click anywhere else closes the menu.
+- Where zones overlap, the one under the pointer (or yours) is drawn on top, and WoW Forever's new
+  zones go under the original ones.
 - Minimap button to show/hide the map.
 
 ### You and your group
@@ -60,8 +64,8 @@ starting point for characters that have none yet)
 - Death marker at your corpse.
 
 ### Pins
-- Flight masters, dungeons and raids, trainers, innkeepers, mailboxes, auctioneers, bankers,
-  anvils and forges, zone links.
+- Flight masters, dungeons and raids (shown at every zoom), trainers, innkeepers, mailboxes,
+  auctioneers, bankers, anvils and forges, zone links.
 - The game's map pin: Ctrl+right click to set or remove.
 - Quest markers and quest areas (all quests with others dimmed, or tracked only). The markers are
   CloudeMap's own buttons drawn with the game's art; a click tracks the quest.

@@ -223,8 +223,10 @@ local CROP = { 0.08, 0.92, 0.08, 0.92 }       -- trims the border of an icon, as
 
 P.RegisterCategory("flight",   { name = "Flight masters",       order = 10, minScale = 0.3, size = 22,
                                  texture = "Interface\\AddOns\\CloudeMap\\Gfx\\ability_mount_wyvern_01", texCoord = CROP })
-P.RegisterCategory("instance", { name = "Dungeons and raids",   order = 20, minScale = 0.3, size = 22,
-                                 atlas = "dungeon", color = { 0.4, 0.7, 1, 1 } })
+-- (dungeons and raids: drawn at every zoom and from every map, like party members; never smaller
+-- than 16 on screen, so they stay visible zoomed right out)
+P.RegisterCategory("instance", { name = "Dungeons and raids",   order = 20, minScale = 0, size = 22,
+                                 always = true, minSize = 16, atlas = "dungeon", color = { 0.4, 0.7, 1, 1 } })
 P.RegisterCategory("classtrainer", { name = "Class trainers",       order = 30, minScale = 1.0, size = 16, texCoord = CROP, color = { 1, 0.82, 0.2, 1 } })
 P.RegisterCategory("proftrainer",  { name = "Profession trainers",  order = 31, minScale = 1.0, size = 16, texCoord = CROP, color = { 1, 0.82, 0.2, 1 } })
 P.RegisterCategory("innkeeper",    { name = "Innkeepers",           order = 40, minScale = 0.8, size = 16, texCoord = CROP, color = { 1, 0.82, 0.2, 1 } })
