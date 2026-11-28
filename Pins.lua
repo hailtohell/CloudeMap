@@ -227,6 +227,11 @@ P.RegisterCategory("flight",   { name = "Flight masters",       order = 10, minS
 -- than 16 on screen, so they stay visible zoomed right out)
 P.RegisterCategory("instance", { name = "Dungeons and raids",   order = 20, minScale = 0, size = 22,
                                  always = true, minSize = 16, atlas = "dungeon", color = { 0.4, 0.7, 1, 1 } })
+-- battleground entrances (the game lists none: Carbonite's and the journal's lists are dungeons and
+-- raids only), your faction's, drawn like the dungeons
+P.RegisterCategory("bgentrance", { name = "Battleground entrances", order = 21, minScale = 0, size = 22,
+                                 always = true, minSize = 16, texture = "Interface\\Minimap\\Tracking\\BattleMaster",
+                                 color = { 1, 0.82, 0.2, 1 } })
 P.RegisterCategory("classtrainer", { name = "Class trainers",       order = 30, minScale = 1.0, size = 16, texCoord = CROP, color = { 1, 0.82, 0.2, 1 } })
 P.RegisterCategory("proftrainer",  { name = "Profession trainers",  order = 31, minScale = 1.0, size = 16, texCoord = CROP, color = { 1, 0.82, 0.2, 1 } })
 P.RegisterCategory("innkeeper",    { name = "Innkeepers",           order = 40, minScale = 0.8, size = 16, texCoord = CROP, color = { 1, 0.82, 0.2, 1 } })
@@ -484,6 +489,29 @@ function P.ReadGame(ids, known)
     end
     counts.instance = #inst
     P.SetPins("instance", inst)
+
+    -- battleground entrances: each faction's own camp by the portal (WoW Forever's, as published
+    -- for its quartermasters; Arathi Basin's near the camps, to be checked in game). Darkspear
+    -- Islands has no entrance in the world (queue only).
+    local BG = {
+        -- { name, level, faction (1 Alliance, 2 Horde), uiMapID, x, y }
+        { "Warsong Gulch", "10-60, 10 vs 10", 1, 1440, 61.6, 83.8 },   -- Ashenvale, Silverwing Grove
+        { "Warsong Gulch", "10-60, 10 vs 10", 2, 1413, 46.7, 8.4 },    -- The Barrens, Mor'shan Base Camp
+        { "Arathi Basin", "20-60, 15 vs 15", 1, 1417, 46.0, 45.3 },    -- Arathi Highlands, Refuge Pointe
+        { "Arathi Basin", "20-60, 15 vs 15", 2, 1417, 73.0, 30.0 },    -- Arathi Highlands, behind Hammerfall
+        { "Alterac Valley", "51-60, 40 vs 40", 1, 1416, 39.6, 81.6 },  -- Alterac Mountains, Stormpike camp
+        { "Alterac Valley", "51-60, 40 vs 40", 2, 1416, 62.8, 59.6 },  -- Alterac Mountains, Frostwolf camp
+    }
+    local bgs = {}
+    for _, e in ipairs(BG) do
+        if e[3] ~= hide and known[e[4]] then
+            bgs[#bgs + 1] = { map = e[4], x = e[5] / 100, y = e[6] / 100,
+                texture = "Interface\\Minimap\\Tracking\\BattleMaster", name = e[1],
+                text = ("Battleground entrance (%s)\nLevel %s"):format(FACTION[e[3]], e[2]) }
+        end
+    end
+    counts.bgentrance = #bgs
+    P.SetPins("bgentrance", bgs)
 
     -- where one zone runs into the next, a pin on each side
     local links = {}

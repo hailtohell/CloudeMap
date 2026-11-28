@@ -26,6 +26,11 @@ local Spread, clamp, Now, Secret = B.Spread, B.clamp, B.Now, B.Secret
 --                                        drag); return true to say it was handled
 --   Map.OnToggle(fn)                     fn(categoryID, on) when a pin category is switched
 --   Map.Status(fn)                       fn() -> a line for /cmap status
+--   Map.AfterFight(fn, key)              -> true when held: fn() now when out of a fight, else
+--                                        when the fight ends (for what the game refuses in one,
+--                                        e.g. starting a journey). A key keeps only the newest of
+--                                        its kind ("journey": the last Shift+click wins).
+--   Map.Waiting()                        -> how many are held for the fight's end
 ---------------------------------------------------------------------------
 do
     local M = { version = 1 }
@@ -74,6 +79,28 @@ do
         return v.view, ns.pinLayer, v.scale, pf and pf:GetFrameLevel() or (v.view:GetFrameLevel() + 5)
     end
     local function Add(list) return function(fn) if type(fn) == "function" then list[#list + 1] = fn end end end
+
+    -- held for the end of the fight: { fn, key } in order; a key replaces its earlier one
+    local held = {}
+    local function Fight() return InCombatLockdown and InCombatLockdown() end
+    function M.AfterFight(fn, key)
+        if type(fn) ~= "function" then return false end
+        if not Fight() then pcall(fn); return false end
+        if key ~= nil then
+            for i = #held, 1, -1 do if held[i][2] == key then table.remove(held, i) end end
+        end
+        held[#held + 1] = { fn, key }
+        return true
+    end
+    function M.Waiting() return #held end
+    ns.AfterFight = M.AfterFight            -- (CloudeMap's own use)
+    local fightEv = CreateFrame("Frame")
+    fightEv:RegisterEvent("PLAYER_REGEN_ENABLED")
+    fightEv:SetScript("OnEvent", function()
+        local list = held
+        held = {}
+        for _, h in ipairs(list) do pcall(h[1]) end
+    end)
     M.OnRedraw, M.OnClick, M.OnToggle, M.Status = Add(redraw), Add(clicks), Add(toggles), Add(status)
     P.Map = M                       -- (CloudeMap.Map: the public table reads the registry)
 
@@ -89,6 +116,7 @@ do
     end
     function B.PluginStatus()
         local out = {}
+        if #held > 0 then out[1] = ("held for the fight's end: %d | "):format(#held) end
         for _, fn in ipairs(status) do
             local ok, line = pcall(fn)
             if ok and type(line) == "string" then out[#out + 1] = line .. " | " end

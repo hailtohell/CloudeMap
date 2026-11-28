@@ -14,7 +14,7 @@ project: features and fixes follow what I need in game, but feedback is welcome.
 **Inspired by Carbonite.** Thanks to its developers. No Carbonite code was reused; CloudeMap is
 written from scratch.
 
-Version 0.21.2 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
+Version 0.21.3 · SavedVariables: CloudeMapCharDB (per character; CloudeMapDB is the account-wide
 starting point for characters that have none yet)
 
 ---
@@ -64,7 +64,8 @@ starting point for characters that have none yet)
 - Death marker at your corpse.
 
 ### Pins
-- Flight masters, dungeons and raids (shown at every zoom), trainers, innkeepers, mailboxes,
+- Flight masters, dungeons and raids (shown at every zoom), battleground entrances (your
+  faction's: Warsong Gulch, Arathi Basin, Alterac Valley), trainers, innkeepers, mailboxes,
   auctioneers, bankers, anvils and forges, zone links.
 - The game's map pin: Ctrl+right click to set or remove.
 - Quest markers and quest areas (all quests with others dimmed, or tracked only). The markers are
@@ -109,13 +110,13 @@ All of these are optional and detected automatically. Their pins are listed unde
 | **GatherMate2** | Gathering nodes, one toggle per node type, own size slider. |
 | **RareScanner** | Rare pins and spawn areas, sized like RareScanner's own; its tooltip stays while hovered. |
 | **Spy** | Nearby enemy players as red dots at your exact position when last seen (kill on sight brighter, inactive dimmed), its fight markers, and enemies reported by other Spy users. Follows Spy's own timeouts and options. |
-| **ForeverDungeonJournal** | Its dungeon maps drawn by CloudeMap itself (both windows can show them at once): floors, bosses with portraits, entrances, ladders between floors, quest spots; fitted to the window, wheel zoom and drag, dungeon picker; switched on automatically inside a dungeon. Optional sync (Options): a dungeon or floor picked in one window is shown in the other. Its "Show on Map" X marker (left click targets and marks, right click removes) and dungeon entrance pins on the world map. |
+| **ForeverDungeonJournal** | Its dungeon maps drawn by CloudeMap itself (both windows can show them at once): floors, bosses with portraits, entrances, ladders between floors, quest spots; fitted to the window, wheel zoom and drag, dungeon picker; switched on automatically inside a dungeon (in Dire Maul's corridors: the wing picked last on the journal's map, else East). Optional sync (Options): a dungeon or floor picked in one window is shown in the other. Its "Show on Map" X marker (left click targets and marks, right click removes) and dungeon entrance pins on the world map. |
 | **HereBeDragons-Pins** | World map icons from any addon that uses this library. |
 | **Other addons' map pins** | Waypoints set through the game's map pin show up too. |
 
 Other addons can add their own pin categories through `_G.CloudeMap`, and plugins can draw on
 the map itself through `CloudeMap.Map` (map position, conversions, redraw, click and status
-callbacks; documented in Plugins.lua). Categories can set a minimum on-screen size so their pins
+callbacks, and a queue for what the game refuses during a fight; documented in Plugins.lua). Categories can set a minimum on-screen size so their pins
 stay visible zoomed right out.
 
 ## Slash commands

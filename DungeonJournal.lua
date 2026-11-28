@@ -474,7 +474,6 @@ do
             local lbl = #floors > 1 and (fd.label or L("MAP_FLOOR", level)) or nil
             ui.barText:SetText(Title(FDJ, dj.name) .. (lbl and ("  |cffbbbbbb" .. lbl .. "|r") or ""))
         end
-        if dj.Units then dj.Units() end
     end
 
     -- the journal's dungeon and floor: what its map shows (or would open on)
@@ -603,86 +602,12 @@ do
         local ok, best = pcall(C_Map.GetBestMapForUnit, "player")
         if not ok or Secret(best) or not tonumber(best) or best == dj.lastBest then return end
         dj.lastBest = best
-        dj.unitRect = nil
         local data = FDJ.DUNGEON_MAPS[dj.name]
         for i = 1, data and data.floors and #data.floors or 0 do
             if dj.FloorMap(FDJ, data, i) == best then SelectFloor(i, false) return end
         end
     end
 
-    -- The hero (and the group) on the map, drawn by the game itself (inside, addons get no position):
-    -- a UnitPositionFrame over the floor's art, told which map it covers.
-    function dj.Units()
-        local holder = v.art
-        local f = dj.units
-        if not (dj.on and dj.name and holder) then
-            if f then f:Hide() end
-            return
-        end
-        if f == nil then
-            local ok, made = pcall(CreateFrame, "UnitPositionFrame", nil, holder, "UnitPositionFrameTemplate")
-            if not ok or not made then dj.unitsErr = tostring(made); dj.units = false; return end
-            f = made
-            dj.units = f
-            pcall(f.SetPinTexture, f, "player", "UI-WorldMapArrow")
-            pcall(f.SetPinSize, f, "player", 26)
-            pcall(f.SetPinSize, f, "party", 13)
-            pcall(f.SetPinSize, f, "raid", 11)
-            if f.SetUseClassColor then
-                pcall(f.SetUseClassColor, f, "player", false)
-                pcall(f.SetUseClassColor, f, "party", true)
-                pcall(f.SetUseClassColor, f, "raid", true)
-            end
-            if f.SetShouldShowUnits then
-                for _, u in ipairs({ "player", "party", "raid" }) do pcall(f.SetShouldShowUnits, f, u, true) end
-            end
-            if f.SetMouseOverUnitExcluded then pcall(f.SetMouseOverUnitExcluded, f, "player", true) end
-            f:EnableMouse(false)
-            local acc = 0
-            f:SetScript("OnUpdate", function(self, el)
-                local cap = ns.db and ns.db.cap
-                if cap then acc = acc + (el or 0); if acc < 1 / cap then return end; acc = 0 end
-                if not dj.lastBest then return end
-                dj.Place(self)
-                if dj.unitMap then pcall(self.UpdatePlayerPins, self) end
-            end)
-        end
-        if not f then return end
-        dj.unitRect = nil
-        f:SetFrameLevel(holder:GetFrameLevel() + 60)     -- the hero above the pins
-        f:Show()
-    end
-
-    function dj.Place(f)
-        local D = Parts()
-        local holder = v.art
-        local fl = dj.on and D and dj.FloorMap(D, D.DUNGEON_MAPS[dj.name], dj.floor)
-        local best = dj.lastBest
-        local map, rect = fl, nil
-        if fl and best and best ~= fl then
-            local ok, x1, x2, y1, y2 = pcall(C_Map.GetMapRectOnMap, best, fl)
-            if ok and tonumber(x1) and tonumber(x2) and tonumber(y1) and tonumber(y2) and not Secret(x1) and x2 > x1 and y2 > y1 then
-                map, rect = best, { x1, x2, y1, y2 }
-            end
-        end
-        local key = tostring(map) .. (rect and table.concat(rect, ",") or "") .. tostring(holder and holder:GetWidth())
-        if key == dj.unitRect then return end
-        dj.unitRect = key
-        f:ClearAllPoints()
-        if rect and holder then
-            local w, h = holder:GetWidth(), holder:GetHeight()
-            f:SetPoint("TOPLEFT", holder, "TOPLEFT", rect[1] * w, -rect[3] * h)
-            f:SetSize(math.max(1, (rect[2] - rect[1]) * w), math.max(1, (rect[4] - rect[3]) * h))
-        elseif holder then
-            f:SetAllPoints(holder)
-        end
-        dj.unitMap = map
-        dj.unitArea = rect and ("part %.2f-%.2f x %.2f-%.2f of the floor"):format(rect[1], rect[2], rect[3], rect[4]) or "the whole floor"
-        if map then
-            if not pcall(f.SetUiMapID, f, map) then dj.unitMap = nil end
-            if f.SetNeedsFullUpdate then pcall(f.SetNeedsFullUpdate, f) end
-        end
-    end
 
     -- show the journal's map in the window (fit: fitted, the floor it opens on)
     local function Take(fit)
@@ -700,7 +625,6 @@ do
         return true
     end
     local function Release()
-        if dj.units then dj.units:Hide() end
         if host then host:Hide() end
     end
 
@@ -1132,11 +1056,23 @@ do
         if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(2, function() pcall(B.DungeonAuto) end) end
     end
 
+    local DM_WING = { ["Dire Maul: East"] = true, ["Dire Maul: West"] = true, ["Dire Maul: North"] = true }
     -- the dungeon the hero is in (by the journal), or nil; and whether the hero is in a dungeon or raid at all
     local function Here(FDJ)
         local ok, inside, kind = pcall(IsInInstance)
         if not ok or Secret(kind) or not inside or (kind ~= "party" and kind ~= "raid") then return nil, false end
         local name = Call(FDJ, "CurrentDungeon")
+        -- Dire Maul (instance 429): the game names no wing in its corridors, so no dungeon is
+        -- known there. As the journal does since 2.1.6: the wing picked last on its map
+        -- (ForeverDungeonJournalDB.dmMapWing), else East; the picker switches it.
+        if type(name) ~= "string" or not DM_WING[name] then
+            local okI, _, _, _, _, _, _, _, id = pcall(GetInstanceInfo)
+            if okI and id == 429 then
+                local db = _G.ForeverDungeonJournalDB
+                local kept = type(db) == "table" and db.dmMapWing
+                name = (type(kept) == "string" and DM_WING[kept]) and kept or "Dire Maul: East"
+            end
+        end
         if type(name) == "string" and FDJ.DUNGEON_MAPS[name] and not Locked(FDJ, name) then return name, true end
         return nil, true
     end
@@ -1182,29 +1118,6 @@ do
         pcall(dj.FollowFloor)
     end
 
-    -- what the hero arrow on the journal's map is doing (for /cmap status)
-    function dj.UnitStatus()
-        local f = dj.units
-        local D = Parts()
-        local data = D and D.DUNGEON_MAPS[dj.name]
-        local floors = {}
-        for i = 1, data and data.floors and #data.floors or 0 do floors[#floors + 1] = tostring((dj.FloorMap(D, data, i))) end
-        local hide
-        if dj.unitMap and C_Map.GetMapDisplayInfo then
-            local ok, h = pcall(C_Map.GetMapDisplayInfo, dj.unitMap)
-            hide = ok and tostring(h) or "?"
-        end
-        local uid
-        if f.GetUiMapID then local ok, v = pcall(f.GetUiMapID, f); uid = ok and tostring(v) or "?" end
-        local name = function(id)
-            local ok, i = pcall(C_Map.GetMapInfo, tonumber(id) or 0)
-            return ok and type(i) == "table" and i.name and (" " .. tostring(i.name)) or ""
-        end
-        return (" | hero arrow: frame on map %s%s (frame says %s, %s, %dx%d, %s), floor %s of maps %s, game puts the hero on %s%s, map hides icons: %s"):format(
-            tostring(dj.unitMap), name(dj.unitMap), tostring(uid), tostring(dj.unitArea),
-            math.floor((f:GetWidth() or 0) + 0.5), math.floor((f:GetHeight() or 0) + 0.5), f:IsVisible() and "visible" or "not visible",
-            tostring(dj.floor), table.concat(floors, "/"), tostring(dj.lastBest), name(dj.lastBest), tostring(hide))
-    end
 
     function B.DungeonTest(what) if what == "pick" then Pick() elseif what == "bg" then BGSet(not bg.on) else SetOn(what) end end
     -- what the game tells addons about the hero inside (for /cmap status)
@@ -1231,8 +1144,6 @@ do
                 Sync() and "on" or "off", v.empty and ", no art for this floor" or "") or "found")
                 or (_G.ForeverDungeonJournal_NS and "loaded, but its maps were not found" or "not loaded"),
             dj.err and (", error: " .. tostring(dj.err)) or "")
-            .. (dj.units == false and (" | hero arrow: no UnitPositionFrame (" .. tostring(dj.unitsErr) .. ")")
-                or dj.units and dj.on and dj.UnitStatus() or "")
             .. B.InstancePos()
             .. (" | battleground: %s%s"):format(
                 not InBG() and "not in one" or (bg.on and ("map %s shown, %d tiles, %d landmarks, %d vignettes, %d of the team, hero %s"):format(

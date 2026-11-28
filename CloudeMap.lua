@@ -827,13 +827,34 @@ local function PinTooltip(b)
     GameTooltip:Show()
 end
 
+-- (SetPropagateMouseClicks is off limits to addons in a fight: the game blocks it, and blames us
+-- with an "Interface action failed" for every pin button made then. Buttons made in a fight get
+-- it when the fight ends.)
+tcache.propWait = {}
+do
+    local propWait = tcache.propWait
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:SetScript("OnEvent", function()
+        for i = #propWait, 1, -1 do
+            local b = propWait[i]
+            propWait[i] = nil
+            pcall(b.SetPropagateMouseClicks, b, true)
+        end
+    end)
+end
+
 local function NewPinBtn(i)
     local b = CreateFrame("Button", nil, pinsFrame)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints()
     -- a click that is really the start of a drag goes on to the map underneath
-    if b.SetPropagateMouseClicks then pcall(b.SetPropagateMouseClicks, b, true) end
+    if b.SetPropagateMouseClicks then
+        local w = tcache.propWait
+        if InCombatLockdown and InCombatLockdown() then w[#w + 1] = b
+        else pcall(b.SetPropagateMouseClicks, b, true) end
+    end
     b:SetScript("OnEnter", function(self)
         local p = self.pin
         self.hover = p
@@ -1452,9 +1473,11 @@ local function UpdateFocus(dt)
         if plNode and plNode.level == 2 and plNode.files then
             if plNode.isCity then city = plNode else heroZone = plNode end
         end
-        city = city or CityAt(plX, plY)
+        -- (the game says the hero is on a zone, not in a city: no city by position. A city's map
+        -- can lie over ground above it: Undercity's over the Ruins of Lordaeron in Tirisfal)
+        if not heroZone then city = city or CityAt(plX, plY) end
     end
-    city = city or CityAt(px, py)
+    if not (following and plX and heroZone) then city = city or CityAt(px, py) end
     cityFocus = city
 
     -- following: the pointer still uncovers the map it hovers (besides the hero's)

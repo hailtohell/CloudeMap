@@ -213,6 +213,7 @@ local function ToMinimap(cx, cy)
     if ns.HeroCanvas then hx, hy, ypc = ns.HeroCanvas() end
     local yd = MinimapYards()
     if B.noMMSend or not (hx and ypc and yd and Minimap.PingLocation) then return end
+    if InCombatLockdown and InCombatLockdown() then return end     -- (the minimap's own ping: not in a fight)
     local ex, ny = (cx - hx) * ypc, (hy - cy) * ypc
     local f = -Facing()
     local x, y = ex * math.cos(f) - ny * math.sin(f), ex * math.sin(f) + ny * math.cos(f)
